@@ -17,7 +17,7 @@ case "$os" in
         ;;
     rhel|centos|rocky|almalinux)
         echo "RHEL-based detected"
-        sudo yum install https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/lh-utils-1.0-1.el9.noarch.rpm
+        sudo yum install https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
         ;;
     *)
         echo "Unsupported OS: $os"
