@@ -150,32 +150,68 @@ rk --version
 </details>
 
 <details>
-<summary><b>🔨 Build from Source</b></summary>
+<summary><b>🔨 Build from Source (Using Makefile)</b></summary>
 
-#### For RPM-based Systems (RHEL/CentOS/Rocky/AlmaLinux)
+#### Build Both RPM and DEB Packages
 
 ```bash
 # Clone the repository
 git clone https://github.com/Raufk/rk-cli-utils.git
 cd rk-cli-utils
 
+# Build both packages (recommended)
+make all
+
+# Packages will be created in:
+# - RPM: ~/rpmbuild/RPMS/noarch/rk-cli-utils-*.rpm
+# - DEB: build/deb/rk-cli-utils-*.deb
+```
+
+#### Build RPM Package Only (RHEL/CentOS/Rocky/AlmaLinux)
+
+```bash
 # Build RPM package
 ./build_package.sh
 
+# or
+make rpm
+
 # Install
 sudo yum localinstall ~/rpmbuild/RPMS/noarch/rk-cli-utils-*.rpm
+
+# Verify
+rk --version
 ```
 
-#### For DEB-based Systems (Ubuntu/Debian)
+#### Build DEB Package Only (Ubuntu/Debian)
 
 ```bash
-# Clone the repository
-git clone https://github.com/Raufk/rk-cli-utils.git
-cd rk-cli-utils
+# Build DEB package
+make deb
 
-# Build DEB package (coming soon)
-# For now, use the pre-built package from releases
+# Install
+sudo dpkg -i build/deb/rk-cli-utils-*.deb
+
+# Verify
+rk --version
 ```
+
+#### Clean Build Artifacts
+
+```bash
+# Remove all build files
+make clean
+```
+
+#### Available Make Targets
+
+| Target         | Description                                   |
+| -------------- | --------------------------------------------- |
+| `make all`     | Build both RPM and DEB packages (default)     |
+| `make rpm`     | Build RPM package only                        |
+| `make deb`     | Build DEB package only                        |
+| `make clean`   | Remove all build artifacts                    |
+| `make prepare` | Prepare build environment (version injection) |
 
 </details>
 
