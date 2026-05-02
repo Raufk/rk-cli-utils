@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# =========== utils ===========
+require_cmd() {
+    command -v "$1" >/dev/null || {
+        echo "Error: $1 is required"
+        exit 1
+    }
+}
+
+die() {
+    echo "Error: $1"
+    exit 1
+}
+
+# =========== dependency check ===========
+for cmd in git curl jq ssh-keyscan; do
+    require_cmd "$cmd"
+done
+
+# =========== CLI parsing ===========
+usage() {
+    cat <<EOF
+Usage:
+    rk-cli-utils setup-ssh --email <email> --user <user> --key-file <file> [--host github.ibm.com]
+    setup-ssh --email <email> --user <user> --key-file <file> [--host github.ibm.com]
+
+    rk-cli-utils slack-send --token <token> --channel <channel[,channel2]> --message <msg> [--color good|warning|danger|#hex]
+    slack-send --token <token> --channel <channel[,channel2]> --message <msg> [--color good|warning|danger|#hex]
+
+    rk-cli-utils get-slack-id --email <email> --token <token>
+    get-slack-id --email <email> --token <token>
+EOF
+    exit 0
+}
+
+# =========== main ===========
+cmd="${1:-}"
+shift || true
+
+VERSION="@VERSION@"
+SCRIPT_DIR="/usr/lib/rk-cli-utils"
+
+case "$cmd" in
+    setup-ssh)
+        local email="" user="" key="" host=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --user)
+                    [[ -z "$2" ]] && die "--user requires value"
+                    user="$2"; shift 2 ;;
+                --email)
+                    [[ -z "$2" ]] && die "--email requires value"
+                    email="$2"; shift 2 ;;
+                --key-file)
+                    [[ -z "$2" ]] && die "--key-file requires value"
+                    key="$2"; shift 2 ;;
+                --host)
+                    if [[ -z "$2" || "$2" == --* ]]; then
+                        echo "Warning: --host provided without value, ignoring" >&2
+                        shift 1
+                    else
+                        host="$2"; shift 2
+                    fi
+                    ;;
+                *)
+                    usage ;;
+            esac
+        done
+        source $SCRIPT_DIR/ssh.sh
+        setup_ssh "${user:-}" "${email:-}" "${key:-}" "${host:-}"
+        ;;
+    slack-send)
+        local token="" channel="" message="" color=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --color)
+                    if [[ -n "$2" && "$2" != --* ]]; then
+                        color="$2"; shift 2
+                    else
+                        echo "Warning: --color provided without value, ignoring" >&2
+                        shift 1
+                    fi
+                    ;;
+                --channel)
+                    [[ -z "$2" ]] && die "--channel requires value"
+                    channel="$2"; shift 2 ;;
+                --message)
+                    [[ -z "$2" ]] && die "--message requires value"
+                    message="$2"; shift 2 ;;
+                --token)
+                    [[ -z "$2" ]] && die "--token requires value"
+                    token="$2"; shift 2 ;;
+                *)
+                    usage ;;
+            esac
+        done
+        source $SCRIPT_DIR/slack.sh
+        slack_send "${color:-good}" "$channel" "$message" "$token"
+        ;;
+    get-slack-id)
+        local email="" token=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --email)
+                    [[ -z "$2" ]] && die "--email requires value"
+                    email="$2"; shift 2 ;;
+                --token)
+                    [[ -z "$2" ]] && die "--token requires value"
+                    token="$2"; shift 2 ;;
+                *)
+                    usage ;;
+            esac
+        done
+        source $SCRIPT_DIR/slack.sh
+        get_slack_user_id "$email" "$token"
+        ;;
+    --version|-v)
+        echo "rk-cli-utils version : ${VERSION}"
+        exit 0
+        ;;
+    --help|-h|"")
+        usage ;;
+    *)
+        usage ;;
+esac
