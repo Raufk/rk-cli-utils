@@ -14,10 +14,14 @@ os=$(detect_os)
 case "$os" in
     ubuntu|debian)
         echo "Ubuntu/Debian detected"
+        curl -LO https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils.deb
+        sudo dpkg -i rk-cli-utils.deb
+        rk --version
         ;;
     rhel|centos|rocky|almalinux)
         echo "RHEL-based detected"
         sudo yum install https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
+        rk --version
         ;;
     *)
         echo "Unsupported OS: $os"

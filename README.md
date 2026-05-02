@@ -7,6 +7,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Version](https://img.shields.io/badge/version-1.0-blue.svg)](https://github.com/Raufk/rk-cli-utils/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://www.linux.org/)
+[![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
+[![RHEL](https://img.shields.io/badge/RHEL-EE0000?logo=redhat&logoColor=white)](https://www.redhat.com/)
 [![Shell](https://img.shields.io/badge/shell-bash-green.svg)](https://www.gnu.org/software/bash/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](http://makeapullrequest.com)
 
@@ -97,29 +99,60 @@ get-slack-id --email user@company.com --token xoxb-your-token
 
 ## 📦 Installation
 
-### Quick Install (RHEL/CentOS/Rocky/AlmaLinux)
+### 🚀 Quick Install (Auto-detect OS)
+
+The installation script automatically detects your Linux distribution and installs the appropriate package:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Raufk/rk-cli-utils/main/install/install.sh | bash
 ```
 
+**Supported Platforms:**
+
+- ✅ Ubuntu / Debian (`.deb` package)
+- ✅ RHEL / CentOS / Rocky / AlmaLinux (`.rpm` package)
+
+---
+
 ### Manual Installation
 
 <details>
-<summary><b>📥 Download RPM Package</b></summary>
+<summary><b>📥 Ubuntu/Debian - Download DEB Package</b></summary>
 
 ```bash
 # Download the latest release
-wget https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
+curl -LO https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils.deb
 
 # Install
+sudo dpkg -i rk-cli-utils.deb
+
+# Verify installation
+rk --version
+```
+
+</details>
+
+<details>
+<summary><b>📥 RHEL/CentOS - Download RPM Package</b></summary>
+
+```bash
+# Download and install directly
+sudo yum install https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
+
+# Or download first, then install
+wget https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
 sudo yum localinstall rk-cli-utils-1.0-1.el9.noarch.rpm
+
+# Verify installation
+rk --version
 ```
 
 </details>
 
 <details>
 <summary><b>🔨 Build from Source</b></summary>
+
+#### For RPM-based Systems (RHEL/CentOS/Rocky/AlmaLinux)
 
 ```bash
 # Clone the repository
@@ -131,6 +164,17 @@ cd rk-cli-utils
 
 # Install
 sudo yum localinstall ~/rpmbuild/RPMS/noarch/rk-cli-utils-*.rpm
+```
+
+#### For DEB-based Systems (Ubuntu/Debian)
+
+```bash
+# Clone the repository
+git clone https://github.com/Raufk/rk-cli-utils.git
+cd rk-cli-utils
+
+# Build DEB package (coming soon)
+# For now, use the pre-built package from releases
 ```
 
 </details>
