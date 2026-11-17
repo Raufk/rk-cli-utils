@@ -97,6 +97,131 @@ get-slack-id --email user@company.com --token xoxb-your-token
 
 ---
 
+### 🔑 Git over GitHub App Token
+
+> Clone, commit, fetch, pull and push using a short-lived GitHub App installation token
+
+```bash
+export GH_APP_ID="6566"
+export GH_INSTALLATION_ID="47638"
+export GH_PRIVATE_KEY="/secure/path/github-app-private-key.pem"
+export GH_HOST="https://github.example.com"
+
+# Configure once (file is created with mode 600), or use environment variables
+git-app config init            # edit ~/.config/rk-cli-utils/git-app.conf
+git-app config                 # show effective settings and where each came from
+
+git-app check                  # validate credentials, installation and repo access
+git-app clone --depth 1 --branch main https://github.example.com/org/repo.git
+cd repo
+git-app add .
+git-app commit "Update configuration"
+git-app push --force-with-lease origin main
+git-app --dry-run push origin main       # show what would happen, no network
+git-app --profile oss fetch --prune      # use another host/app/org
+git-app session --write -- make release  # one token for a whole workflow
+TOKEN=$(git-app token --repo https://github.example.com/org/repo.git)   # token only, for docker build etc.
+```
+
+**Git options pass through.** Anything git accepts after `clone`, `fetch`, `pull` or `push`
+(`--depth`, `--branch`, `--prune`, `--tags`, `--rebase`, `--force-with-lease`, `-u`, `-o`, ...) is
+forwarded unchanged. `push` with no branch pushes the current one (not with `--tags`/`--all`/`--mirror`);
+`push --delete` needs an explicit branch. Options that could send the token elsewhere or run a program
+(`--repo`, `--upload-pack`, `--receive-pack`, `--exec`, and `clone -c` for credential/url/hook keys) are refused.
+
+**Dry run.** `--dry-run` runs the local checks (config, key, JWT signing), makes **no** network
+request and mints **no** token, then prints what it would verify and the exact git command it would run.
+`add`/`commit` become `git add --dry-run`/`git commit --dry-run`.
+
+**Retry.** HTTP 429 and 5xx from the GitHub API are retried with exponential back-off and jitter
+(`GIT_APP_RETRIES`, default 3; `GIT_APP_RETRY_DELAY`, default 2s, capped at 60s). `Retry-After` is honoured,
+including on a 403 secondary rate limit. Authentication and permission errors (401/403/404/422) are never retried.
+The `git` transfer itself is not retried.
+
+**Token reuse.** Each command normally mints and revokes its own token. `git-app session` mints
+**one** token, runs your command (or an interactive shell) with it, and revokes it when that exits;
+`git-app` calls inside reuse it, without further API calls. The token is only reused for the same host and repository,
+if it has enough permission (`--write` for push) and is not close to expiring; otherwise a separate token is requested.
+Nothing is written to disk.
+
+**Token only (`git-app token`).** Prints just the installation token on stdout (logs go to stderr), for tools
+that run longer than one command, such as `docker build`. It is scoped to one repository (`--write` for push) and is
+**not revoked**: it stays valid until it expires (1 hour). Revoke early with `git-app revoke`
+(reads `$GH_APP_TOKEN` or stdin).
+
+```bash
+TOKEN=$(git-app token --repo https://github.example.com/org/repo.git) || exit 1
+DOCKER_BUILDKIT=1 docker build --secret id=gh_token,env=TOKEN -t myimage .   # RUN --mount=type=secret,id=gh_token
+printf '%s' "$TOKEN" | git-app revoke                                       # when done
+```
+
+Treat the output as a credential: prefer a BuildKit secret over `--build-arg` (build args are stored in the image
+history), and never write it to a file in the repo or a log.
+
+**Profiles.** Keep several hosts, Apps or organisations in one config file:
+
+```ini
+GH_PRIVATE_KEY=~/.ssh/default-app.pem   # defaults, before any [section]
+GIT_APP_PROFILE=work                    # profile used when none is given
+
+[work]
+GH_HOST=https://github.work.example.com
+GH_APP_ID=1234
+GH_INSTALLATION_ID=5678
+
+[oss]
+GH_HOST=https://github.com
+GH_API_URL=https://api.github.com
+GH_APP_ID=4321
+GH_INSTALLATION_ID=8765
+GH_PRIVATE_KEY=~/.ssh/oss-app.pem
+```
+
+Pick one with `--profile <name>` or `GIT_APP_PROFILE`; a profile overrides the defaults and environment
+variables override both. `git-app config` shows the effective values and where each came from;
+`git-app config profiles` lists the names.
+
+**Shell completion** (bash and zsh) for commands, options, profiles, remotes and branches is installed by the
+RPM/DEB. From a checkout: `source completions/git-app.bash`, or put `completions/` on your zsh `fpath`.
+
+| Setting              | Purpose                                              |
+| -------------------- | ---------------------------------------------------- |
+| `GH_APP_ID`          | GitHub App ID                                        |
+| `GH_INSTALLATION_ID` | Installation ID (numeric)                            |
+| `GH_PRIVATE_KEY`     | Path to the App's unencrypted PEM key                |
+| `GH_HOST`            | e.g. `https://github.example.com`                    |
+| `GH_API_URL`         | Optional, default `$GH_HOST/api/v3`                  |
+| `GIT_USER_NAME` / `GIT_USER_EMAIL` | Local commit identity (both or neither) |
+| `GIT_APP_PROFILE`    | Profile to use (same as `--profile`)                 |
+| `GIT_APP_RETRIES` / `GIT_APP_RETRY_DELAY` | Retry count (3) and base back-off seconds (2) |
+| `GIT_APP_LOG_LEVEL`  | `error`, `warn`, `info` (default), `debug`           |
+| `GIT_APP_LOG_FILE`   | Also append redacted logs to this file (mode 600)    |
+
+Configuration sources, lowest to highest precedence: `/etc/rk-cli-utils/git-app.conf`,
+`~/.config/rk-cli-utils/git-app.conf`, `$GIT_APP_CONFIG` or `--config <file>`, then environment variables.
+Config files are parsed as `KEY=VALUE` (never executed), must not be group/world-writable, and may not contain tokens.
+
+**Validation before every operation:** configuration and key checks, App JWT, installation
+(exists, not suspended, owned by the repository owner), token scope, repository access
+(and not archived/read-only for push).
+
+**Errors** name the cause and a fix (401 bad App ID/key/clock, 403 suspended/blocked, 404 wrong
+installation or repo not installed, 422 missing permission, network/DNS/TLS problems).
+Exit codes: `0` ok, `1` error, `2` usage/configuration, `3` network/API.
+
+**Security**
+
+- Private key must be a regular, readable, unencrypted PEM with mode `600` (override for read-only secret mounts: `GIT_APP_INSECURE_KEY_PERMS=1`)
+- Token is scoped to the single repository, `contents: read` (or `write` for push)
+- Token and JWT live in memory only; they reach curl via stdin and git via `GIT_ASKPASS`, never on a command line, in a URL, git config or credential store
+- Token is revoked when the command exits; temp files are mode 700 and removed
+- Logs go to stderr, tokens are redacted, `--verbose` still never prints them
+- Remotes must be HTTPS and belong to `GH_HOST`
+
+Global options (before the action): `--profile <name>`, `--config <file>`, `--dry-run`, `--verbose`, `--quiet`, `-h/--help`, `-V/--version`.
+
+---
+
 ## 📦 Installation
 
 ### 🚀 Quick Install (Auto-detect OS)
@@ -226,6 +351,7 @@ make clean
 | `setup-ssh`    | Configure SSH & Git | `setup-ssh --email dev@co.com --user "Dev" --key-file ~/.ssh/id_rsa` |
 | `slack-send`   | Send Slack messages | `slack-send --token TOKEN --channel "#ops" --message "Hello!"`       |
 | `get-slack-id` | Get Slack user ID   | `get-slack-id --email user@co.com --token TOKEN`                     |
+| `git-app`      | Git via GitHub App  | `git-app push origin main`                                           |
 
 ### 📚 Detailed Examples
 
@@ -331,10 +457,15 @@ rk-cli-utils/
 │   └── rk                    # Main CLI dispatcher
 ├── 📁 lib/
 │   ├── ssh.sh               # SSH setup logic
+│   ├── git.sh               # GitHub App token git operations
 │   └── slack.sh             # Slack API integration
+├── 📁 completions/
+│   ├── git-app.bash         # bash completion (git-app, rk)
+│   └── _git-app             # zsh completion (git-app, rk)
 ├── 📁 wrappers/
 │   ├── setup-ssh            # Direct command wrapper
 │   ├── slack-send           # Direct command wrapper
+│   ├── git-app              # Direct command wrapper
 │   └── get-slack-id         # Direct command wrapper
 ├── 📁 packaging/
 │   └── rk-cli-utils.spec    # RPM package specification
@@ -354,6 +485,7 @@ rk-cli-utils/
 | `curl`            | HTTP client       | `yum install curl`            |
 | `jq`              | JSON processor    | `yum install jq`              |
 | `openssh-clients` | SSH tools         | `yum install openssh-clients` |
+| `openssl`         | JWT signing (`git-app`) | `yum install openssl`   |
 
 ---
 

@@ -14,7 +14,7 @@ rpmdev-setuptree
 # copy source files
 printf "\n======================================================"
 printf "===== Copying source files..."
-cp -r bin lib wrappers ~/rpmbuild/SOURCES/
+cp -r bin lib wrappers completions ~/rpmbuild/SOURCES/
 cp -r packaging/rk-cli-utils.spec ~/rpmbuild/SPECS/
 
 # build the RPM package

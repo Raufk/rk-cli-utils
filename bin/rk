@@ -23,14 +23,18 @@ done
 usage() {
     cat <<EOF
 Usage:
-    rk setup-ssh --email <email> --user <user> --key-file <file> [--host github.ibm.com]
-    setup-ssh --email <email> --user <user> --key-file <file> [--host github.ibm.com]
+    rk setup-ssh --email <email> --user <user> --key-file <file> [--host github.example.com]
+    setup-ssh --email <email> --user <user> --key-file <file> [--host github.example.com]
 
     rk slack-send --token <token> --channel <channel[,channel2]> --message <msg> [--color good|warning|danger|#hex]
     slack-send --token <token> --channel <channel[,channel2]> --message <msg> [--color good|warning|danger|#hex]
 
     rk get-slack-id --email <email> --token <token>
     get-slack-id --email <email> --token <token>
+
+    rk git-app <clone|add|commit|fetch|pull|push|token> [args]   (GitHub App token auth)
+    git-app <clone|add|commit|fetch|pull|push|token> [args]
+    rk git-app help
 EOF
     exit 0
 }
@@ -110,8 +114,12 @@ main() {
             source $SCRIPT_DIR/slack.sh
             get_slack_user_id "$email" "$token"
             ;;
+        git-app)
+            source "$SCRIPT_DIR/git.sh"
+            git_app "$@"
+            ;;
         --version|-v)
-            printf "\nRK Cli Utils -\n  Version : %s\n Maintainer : Rauf K (abdulraufkc111@gmail.com)\n\n" "$VERSION"
+            printf "\nRK Cli Utils -\n  Version : %s\n  Maintainer : Rauf K (abdulraufkc111@gmail.com)\n\n" "$VERSION"
             exit 0
             ;;
         --help|-h|"")
