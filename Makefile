@@ -34,12 +34,8 @@ rpm: prepare
 	@echo "==========================================="
 	@echo "Building RPM..."
 
-	mkdir -p $(RPMBUILD)/SOURCES/$(NAME)-$(VERSION)
-	cp -r bin lib wrappers completions $(RPMBUILD)/SOURCES/$(NAME)-$(VERSION)/
-	cp $(BUILD_DIR)/rk $(RPMBUILD)/SOURCES/$(NAME)-$(VERSION)/bin/rk
-
-	cd $(RPMBUILD)/SOURCES && tar -czf $(NAME)-$(VERSION).tar.gz $(NAME)-$(VERSION)
-
+	cp -r bin lib wrappers completions $(RPMBUILD)/SOURCES/
+	cp $(BUILD_DIR)/rk $(RPMBUILD)/SOURCES/bin/rk
 	cp packaging/$(NAME).spec $(RPMBUILD)/SPECS/
 
 	rpmbuild -ba $(RPMBUILD)/SPECS/$(NAME).spec

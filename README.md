@@ -157,7 +157,7 @@ curl -fsSL https://raw.githubusercontent.com/Raufk/rk-cli-utils/main/install/ins
 
 ```bash
 # Download the latest release
-curl -LO https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils.deb
+curl -LO https://github.com/Raufk/rk-cli-utils/releases/download/v1.1/rk-cli-utils.deb
 
 # Install
 sudo dpkg -i rk-cli-utils.deb
@@ -173,11 +173,11 @@ rk --version
 
 ```bash
 # Download and install directly
-sudo yum install https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
+sudo yum install https://github.com/Raufk/rk-cli-utils/releases/download/v1.1/rk-cli-utils-1.1-1.el9.noarch.rpm
 
 # Or download first, then install
-wget https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
-sudo yum localinstall rk-cli-utils-1.0-1.el9.noarch.rpm
+wget https://github.com/Raufk/rk-cli-utils/releases/download/v1.1/rk-cli-utils-1.1-1.el9.noarch.rpm
+sudo yum localinstall rk-cli-utils-1.1-1.el9.noarch.rpm
 
 # Verify installation
 rk --version
