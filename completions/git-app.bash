@@ -103,7 +103,7 @@ _gha_complete_words() {
             fi ;;
         session | token)
             if [[ "$cur" == -* ]]; then
-                COMPREPLY=($(compgen -W "--write --repo --" -- "$cur"))
+                COMPREPLY=($(compgen -W "--write --all-repos --repo --" -- "$cur"))
             elif [[ "$prev" == --repo ]]; then
                 COMPREPLY=($(compgen -W "$(_gha_remotes)" -- "$cur"))
             fi ;;

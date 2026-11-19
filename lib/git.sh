@@ -63,14 +63,15 @@ Actions:
     push  [git-push options]  [remote] [refspec...]
     check [repo-url | remote]         Validate configuration, App, installation
                                       and (optionally) repository access
-    session [--write] [--repo <url|remote>] [-- command [args...]]
+    session [--write] [--all-repos | --repo <url|remote>] [-- command [args...]]
                                       Mint ONE token, run a command or shell with
                                       it, and revoke it on exit. git-app calls
                                       made inside reuse the token.
-    token [--write] [--repo <url|remote>]
+    token [--write] [--all-repos | --repo <url|remote>]
                                       Mint ONE token and print ONLY the token on
                                       stdout. It is NOT revoked: it stays valid
                                       until it expires (1 hour). Use it as
+                                          TOKEN=\$(git-app token --all-repos)
                                           TOKEN=\$(git-app token --repo <url>)
                                       Revoke early with: git-app revoke
     revoke                            Revoke the token in \$GH_APP_TOKEN (or stdin)
@@ -106,8 +107,8 @@ Configuration (environment variables override config files):
     GH_APP_ID            GitHub App ID (or client ID)
     GH_INSTALLATION_ID   App installation ID
     GH_PRIVATE_KEY       Path to the App private-key PEM (unencrypted, mode 600)
-    GH_HOST              e.g. https://github.example.com
-    GH_API_URL           API base URL (default: \$GH_HOST/api/v3)
+    GH_HOST              e.g. https://github.example.com (or https://github.com)
+    GH_API_URL           API base URL (auto-detected: https://api.github.com or \$GH_HOST/api/v3)
     GIT_USER_NAME / GIT_USER_EMAIL   Local commit identity (set both or neither)
     GIT_APP_PROFILE      Default profile (same as --profile)
     GIT_APP_RETRIES      Retries on HTTP 429/5xx (default 3, 0 disables)
@@ -476,7 +477,13 @@ _gha_require_remote_config() {
     [[ "$GH_HOST" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] ||
         _gha_fail 2 "GH_HOST must look like https://host (HTTPS only, no path): $GH_HOST"
 
-    _GHA_API_BASE="${GH_API_URL:-${GH_HOST}/api/v3}"
+    if [[ -n "${GH_API_URL:-}" ]]; then
+        _GHA_API_BASE="${GH_API_URL}"
+    elif [[ "$GH_HOST" == "https://github.com" ]]; then
+        _GHA_API_BASE="https://api.github.com"
+    else
+        _GHA_API_BASE="${GH_HOST}/api/v3"
+    fi
     _GHA_API_BASE="${_GHA_API_BASE%/}"
     [[ "$_GHA_API_BASE" == https://* ]] || _gha_fail 2 "GH_API_URL must use HTTPS."
 }
@@ -703,9 +710,15 @@ _gha_validate_installation() {
 # _gha_mint_token <read|write>
 _gha_mint_token() {
     local perm="$1" request granted token
-    request="$(jq -n --arg repo "$_GHA_REPO_NAME" --arg permission "$perm" \
-        '{repositories: [$repo], permissions: {contents: $permission}}')"
-    _gha_log info "Requesting installation token (contents: $perm) for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}"
+    if [[ -n "$_GHA_REPO_NAME" ]]; then
+        request="$(jq -n --arg repo "$_GHA_REPO_NAME" --arg permission "$perm" \
+            '{repositories: [$repo], permissions: {contents: $permission}}')"
+        _gha_log info "Requesting installation token (contents: $perm) for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}"
+    else
+        request="$(jq -n --arg permission "$perm" \
+            '{permissions: {contents: $permission}}')"
+        _gha_log info "Requesting installation token (contents: $perm) for all installation repositories"
+    fi
     _gha_api POST "${_GHA_API_BASE}/app/installations/${GH_INSTALLATION_ID}/access_tokens" \
         "$_GHA_JWT" "$request"
     [[ "$_GHA_HTTP_CODE" == "201" ]] || _gha_http_fail "Token request"
@@ -750,7 +763,9 @@ _gha_mint_and_validate() {
     _gha_make_jwt
     _gha_validate_installation
     _gha_mint_token "$1"
-    _gha_validate_repo "$1"
+    if [[ -n "$_GHA_REPO_NAME" ]]; then
+        _gha_validate_repo "$1"
+    fi
 }
 
 # --------------------------------------------------------------------------
@@ -766,7 +781,7 @@ _gha_session_reuse() {
 
     want="$(_gha_lower "${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}")"
     have="$(_gha_lower "${GIT_APP_SESSION_REPO:-}")"
-    if [[ "$want" != "$have" ]]; then
+    if [[ "$have" != "*" && "$want" != "$have" ]]; then
         _gha_log info "Session token is for '${GIT_APP_SESSION_REPO:-?}', not '${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}'; requesting a separate token"
         return 1
     fi
@@ -1057,7 +1072,13 @@ git_app() {
             GH_HOST="${GH_HOST%/}"
             [[ "$GH_HOST" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] ||
                 _gha_fail 2 "GH_HOST must look like https://host (HTTPS only, no path): $GH_HOST"
-            _GHA_API_BASE="${GH_API_URL:-${GH_HOST}/api/v3}"
+            if [[ -n "${GH_API_URL:-}" ]]; then
+                _GHA_API_BASE="${GH_API_URL}"
+            elif [[ "$GH_HOST" == "https://github.com" ]]; then
+                _GHA_API_BASE="https://api.github.com"
+            else
+                _GHA_API_BASE="${GH_HOST}/api/v3"
+            fi
             _GHA_API_BASE="${_GHA_API_BASE%/}"
             [[ "$_GHA_API_BASE" == https://* ]] || _gha_fail 2 "GH_API_URL must use HTTPS."
             _GHA_TOKEN="${GH_APP_TOKEN:-}"
@@ -1210,28 +1231,35 @@ git_app() {
             if [[ -n "$repo_url" ]]; then _gha_parse_repo_url "$repo_url"; fi
             ;;
         session | token)
+            local all_repos=0
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --write) perm="write"; shift ;;
+                    --all-repos) all_repos=1; shift ;;
                     --repo)
                         [[ $# -ge 2 ]] || _gha_fail 2 "--repo requires a URL or remote name"
                         target="$2"; shift 2 ;;
                     --repo=*) target="${1#--repo=}"; shift ;;
                     --)
                         [[ "$action" == "session" ]] ||
-                            _gha_fail 2 "'token' does not run a command." "Use: TOKEN=\$(rk git-app token --repo <url>)"
+                            _gha_fail 2 "'token' does not run a command." "Use: TOKEN=\$(rk git-app token [--all-repos | --repo <url>])"
                         shift
                         while [[ $# -gt 0 ]]; do session_cmd+=("$1"); shift; done
                         ;;
                     *)
                         _gha_fail 2 "Unknown $action argument: $1" \
-                            "Usage: rk git-app $action [--write] [--repo <url|remote>]$([[ "$action" == "session" ]] && printf ' [-- command [args...]]')" ;;
+                            "Usage: rk git-app $action [--write] [--all-repos | --repo <url|remote>]$([[ "$action" == "session" ]] && printf ' [-- command [args...]]')" ;;
                 esac
             done
-            repo_url="$(_gha_detect_repo_url "$target")"
-            [[ -n "$repo_url" ]] || _gha_fail 2 "Cannot determine the repository for the $action." \
-                "Run inside a working tree with an HTTPS remote, or pass --repo <url|remote>."
-            _gha_parse_repo_url "$repo_url"
+            if [[ "$all_repos" == "1" && -n "$target" ]]; then
+                _gha_fail 2 "Cannot combine --all-repos and --repo."
+            fi
+            if [[ "$all_repos" == "0" ]]; then
+                repo_url="$(_gha_detect_repo_url "$target")"
+                [[ -n "$repo_url" ]] || _gha_fail 2 "Cannot determine the repository for the $action." \
+                    "Run inside a working tree with an HTTPS remote, pass --repo <url|remote>, or use --all-repos."
+                _gha_parse_repo_url "$repo_url"
+            fi
             if [[ -n "${GIT_APP_SESSION_TOKEN:-}" ]]; then
                 _gha_fail 2 "Already inside a git-app session." \
                     "Run git-app actions directly; they reuse the session token. Exit the session first to start another."
@@ -1250,8 +1278,10 @@ git_app() {
         _gha_log info "Local checks passed: configuration, private key, JWT signing"
         if [[ "$action" == "check" ]]; then
             _gha_log info "Would verify: App (GET /app), installation $GH_INSTALLATION_ID${_GHA_REPO_NAME:+, repository ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}}"
-        else
+        elif [[ -n "$_GHA_REPO_NAME" ]]; then
             _gha_log info "Would verify installation $GH_INSTALLATION_ID and mint a token (contents: $perm) for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME} on $GH_HOST"
+        else
+            _gha_log info "Would verify installation $GH_INSTALLATION_ID and mint a token (contents: $perm) for all installation repositories on $GH_HOST"
         fi
         if [[ ${#_GHA_CMD[@]} -gt 0 ]]; then
             _gha_log info "Would run: git -c credential.helper= $(_gha_quote_cmd "${_GHA_CMD[@]}")"
@@ -1294,7 +1324,11 @@ git_app() {
         if [[ -t 1 ]]; then
             _gha_log warn "stdout is a terminal: the token is printed in clear text. Use TOKEN=\$(rk git-app token ...)"
         fi
-        _gha_log info "Token issued for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME} (contents: $perm), valid until ${_GHA_TOKEN_EXPIRES:-about 1 hour from now}. Not revoked; run 'rk git-app revoke' to revoke early."
+        if [[ -n "$_GHA_REPO_NAME" ]]; then
+            _gha_log info "Token issued for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME} (contents: $perm), valid until ${_GHA_TOKEN_EXPIRES:-about 1 hour from now}. Not revoked; run 'rk git-app revoke' to revoke early."
+        else
+            _gha_log info "Token issued for all installation repositories (contents: $perm), valid until ${_GHA_TOKEN_EXPIRES:-about 1 hour from now}. Not revoked; run 'rk git-app revoke' to revoke early."
+        fi
         printf '%s\n' "$_GHA_TOKEN"
         return 0
     fi
@@ -1315,7 +1349,8 @@ git_app() {
         trap ':' INT
         (
             export GIT_APP_SESSION_TOKEN="$_GHA_TOKEN"
-            export GIT_APP_SESSION_REPO="${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}"
+            export GIT_APP_SESSION_REPO="${_GHA_REPO_NAME:+"${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}"}"
+            export GIT_APP_SESSION_REPO="${GIT_APP_SESSION_REPO:-*}"
             export GIT_APP_SESSION_HOST="$GH_HOST"
             export GIT_APP_SESSION_PERM="$perm"
             export GIT_APP_SESSION_EXPIRES="$expires"

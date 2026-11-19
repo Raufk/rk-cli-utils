@@ -91,8 +91,8 @@ _gha_action() {
         add) _arguments '*:file:_files' ;;
         commit) _arguments '(-m --message)'{-m,--message=}'[commit message]:message' '(-a --all)'{-a,--all}'[stage tracked changes]' '--amend[amend previous commit]' '--no-verify[skip hooks]' ;;
         check) _arguments '1:repo URL or remote:_gha_remotes' ;;
-        token) _arguments '--write[request write permission]' '--repo=[repository URL or remote]:remote:_gha_remotes' ;;
-        session) _arguments '--write[request write permission]' '--repo=[repository URL or remote]:remote:_gha_remotes' ;;
+        token) _arguments '--write[request write permission]' '--all-repos[mint token for all installation repositories]' '--repo=[repository URL or remote]:remote:_gha_remotes' ;;
+        session) _arguments '--write[request write permission]' '--all-repos[mint token for all installation repositories]' '--repo=[repository URL or remote]:remote:_gha_remotes' ;;
         config) _arguments '1:subcommand:(show init profiles)' ;;
     esac
 }

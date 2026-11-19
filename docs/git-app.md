@@ -129,7 +129,7 @@ Config files:
 | `GH_INSTALLATION_ID` | Installation ID (numeric) | *(Required)* |
 | `GH_PRIVATE_KEY` | Path to unencrypted PEM private key file | *(Required)* |
 | `GH_HOST` | Host URL (e.g. `https://github.example.com` or `https://github.com`) | `https://github.com` |
-| `GH_API_URL` | API base endpoint | `$GH_HOST/api/v3` (or `https://api.github.com`) |
+| `GH_API_URL` | API base endpoint *(Optional)* | Auto-detected (`https://api.github.com` for `github.com`, or `$GH_HOST/api/v3` for GHES) |
 | `GIT_USER_NAME` | Git author/committer name | *(System / git default)* |
 | `GIT_USER_EMAIL` | Git author/committer email | *(System / git default)* |
 | `GIT_APP_PROFILE` | Active profile name | None (uses default section) |
@@ -166,7 +166,7 @@ GH_INSTALLATION_ID=5678
 
 [oss]
 GH_HOST=https://github.com
-GH_API_URL=https://api.github.com
+# GH_API_URL is auto-detected as https://api.github.com
 GH_APP_ID=4321
 GH_INSTALLATION_ID=8765
 GH_PRIVATE_KEY=~/.ssh/oss-app.pem
@@ -261,14 +261,17 @@ git-app session --write
 
 ### Token Extraction (`token` & `revoke`)
 
-For external tooling (e.g., Docker BuildKit secrets, CI jobs) where a token string is directly required:
+For external tooling (e.g., Docker BuildKit secrets, Go build / private dependency downloading, CI jobs) where a token string is directly required:
 
 ```bash
-# Mint a token for a specific repository (valid for up to 1 hour)
+# Mint a token with access to ALL repositories in the GitHub App installation
+TOKEN=$(git-app token --all-repos)
+
+# Mint a token strictly scoped to a single repository (Least Privilege)
 TOKEN=$(git-app token --repo https://github.example.com/org/repo.git)
 
-# Read token with write permissions
-TOKEN=$(git-app token --write --repo https://github.example.com/org/repo.git)
+# Mint a token with write permissions
+TOKEN=$(git-app token --write --all-repos)
 
 # Revoke early when finished
 printf '%s' "$TOKEN" | git-app revoke
@@ -314,13 +317,15 @@ API calls to GitHub handle transient errors with exponential back-off and jitter
 
 Tune retry behavior via `GIT_APP_RETRIES` (default `3`) and `GIT_APP_RETRY_DELAY` (default `2s`, capped at `60s`).
 
-### Docker BuildKit Integration
+### Docker BuildKit & Go Build Integration
 
-Pass tokens into Docker builds securely without leaking credentials in image layers:
+Pass tokens into Docker builds securely without leaking credentials in image layers. Use `--all-repos` to enable downloading multiple private dependencies across your organization:
 
 ```bash
-TOKEN=$(git-app token --repo https://github.example.com/org/private-dep.git) || exit 1
+# Mint token for all repos in the GitHub App installation
+TOKEN=$(git-app token --all-repos) || exit 1
 
+# Build using BuildKit secret
 DOCKER_BUILDKIT=1 docker build \
   --secret id=gh_token,env=TOKEN \
   -t my-app:latest .
@@ -329,14 +334,28 @@ DOCKER_BUILDKIT=1 docker build \
 printf '%s' "$TOKEN" | git-app revoke
 ```
 
-In your `Dockerfile`:
+In your `Dockerfile` (e.g., Go multi-stage build):
 
 ```dockerfile
 # syntax=docker/dockerfile:1.4
-FROM golang:1.22
+FROM golang:1.22-alpine AS builder
+RUN apk add --no-cache git ca-certificates
+WORKDIR /app
+
+ENV GOPRIVATE=github.com/my-org/*
+
+COPY go.mod go.sum ./
 RUN --mount=type=secret,id=gh_token \
-    GH_TOKEN=$(cat /run/secrets/gh_token) \
-    git clone https://x-access-token:${GH_TOKEN}@github.example.com/org/private-dep.git
+    GH_TOKEN=$(cat /run/secrets/gh_token) && \
+    git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/" && \
+    go mod download
+
+COPY . .
+RUN CGO_ENABLED=0 go build -o /app/server ./cmd/server
+
+FROM alpine:latest
+COPY --from=builder /app/server /usr/local/bin/server
+CMD ["/usr/local/bin/server"]
 ```
 
 ### Shell Completion
