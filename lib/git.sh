@@ -946,12 +946,15 @@ _gha_configure_identity() {
 # The token is handed only to this git process, through GIT_ASKPASS.
 # It is never placed in a URL, git config, credential store or command line.
 _gha_git() {
+    local gh_host_nohash="${GH_HOST#https://}"
     GH_APP_TOKEN="$_GHA_TOKEN" \
-    GH_APP_HOST="${GH_HOST#https://}" \
+    GH_APP_HOST="$gh_host_nohash" \
     GIT_TERMINAL_PROMPT=0 \
     GIT_ASKPASS="$_GHA_ASKPASS" \
     GIT_ASKPASS_REQUIRE=force \
-        git -c credential.helper= "$@"
+        git -c credential.helper= \
+            -c "url.https://${gh_host_nohash}/.insteadOf=git@${gh_host_nohash}:" \
+            "$@"
 }
 
 _gha_write_askpass() {
