@@ -9,7 +9,7 @@
 #             3 network/API error (authentication, permission, availability).
 
 # Configuration keys that may be set in the environment or a config file.
-_GHA_CONFIG_KEYS="GH_APP_ID GH_INSTALLATION_ID GH_PRIVATE_KEY GH_HOST GH_API_URL GIT_USER_NAME GIT_USER_EMAIL GIT_APP_PROFILE GIT_APP_RETRIES GIT_APP_RETRY_DELAY GIT_APP_LOG_LEVEL GIT_APP_LOG_FILE"
+_GHA_CONFIG_KEYS="GH_APP_ID GH_APP_INSTALLATION_ID GH_APP_PRIVATE_KEY GH_HOST GH_API_URL GIT_USER_NAME GIT_USER_EMAIL GIT_APP_PROFILE GIT_APP_RETRIES GIT_APP_RETRY_DELAY GIT_APP_LOG_LEVEL GIT_APP_LOG_FILE"
 
 _GHA_ENV_KEYS=""          # config keys that were set in the environment (env wins over files)
 _GHA_LOG_LEVEL=2          # 0=error 1=warn 2=info 3=debug
@@ -106,8 +106,8 @@ are refused. "push" with no refspec pushes the current branch, except with
 
 Configuration (environment variables override config files):
     GH_APP_ID            GitHub App ID (or client ID)
-    GH_INSTALLATION_ID   App installation ID
-    GH_PRIVATE_KEY       Path to the App private-key PEM (unencrypted, mode 600)
+    GH_APP_INSTALLATION_ID   App installation ID
+    GH_APP_PRIVATE_KEY       Path to the App private-key PEM (unencrypted, mode 600)
     GH_HOST              e.g. https://github.example.com (or https://github.com)
     GH_API_URL           API base URL (auto-detected: https://api.github.com or \$GH_HOST/api/v3)
     GIT_USER_NAME / GIT_USER_EMAIL   Local commit identity (set both or neither)
@@ -309,7 +309,7 @@ _gha_apply_config() {
 
             val="${_GHA_CFG_VAL[i]}"
             case "$key" in
-                GH_PRIVATE_KEY | GIT_APP_LOG_FILE)
+                GH_APP_PRIVATE_KEY | GIT_APP_LOG_FILE)
                     if [[ "$val" == "~/"* ]]; then val="$HOME/${val#\~/}"; fi ;;
             esac
             src="${_GHA_CFG_SRC[i]}"
@@ -427,8 +427,8 @@ _gha_config_init() {
 
 # --- Defaults (used when no profile overrides them) ---
 GH_APP_ID=
-GH_INSTALLATION_ID=
-GH_PRIVATE_KEY=~/.ssh/github-app-private-key.pem
+GH_APP_INSTALLATION_ID=
+GH_APP_PRIVATE_KEY=~/.ssh/github-app-private-key.pem
 GH_HOST=https://github.example.com
 # GH_API_URL=https://github.example.com/api/v3
 
@@ -447,15 +447,15 @@ GH_HOST=https://github.example.com
 # [work]
 # GH_HOST=https://github.work.example.com
 # GH_APP_ID=1234
-# GH_INSTALLATION_ID=5678
-# GH_PRIVATE_KEY=~/.ssh/work-app.pem
+# GH_APP_INSTALLATION_ID=5678
+# GH_APP_PRIVATE_KEY=~/.ssh/work-app.pem
 #
 # [oss]
 # GH_HOST=https://github.com
 # GH_API_URL=https://api.github.com
 # GH_APP_ID=4321
-# GH_INSTALLATION_ID=8765
-# GH_PRIVATE_KEY=~/.ssh/oss-app.pem
+# GH_APP_INSTALLATION_ID=8765
+# GH_APP_PRIVATE_KEY=~/.ssh/oss-app.pem
 CONF_EOF
     )
     _gha_log info "Created config template: $path (mode 600)"
@@ -463,7 +463,7 @@ CONF_EOF
 
 _gha_require_remote_config() {
     local k missing=""
-    for k in GH_APP_ID GH_INSTALLATION_ID GH_PRIVATE_KEY GH_HOST; do
+    for k in GH_APP_ID GH_APP_INSTALLATION_ID GH_APP_PRIVATE_KEY GH_HOST; do
         if [[ -z "${!k}" ]]; then missing="$missing $k"; fi
     done
     [[ -z "$missing" ]] || _gha_fail 2 "Missing required configuration:$missing" \
@@ -471,8 +471,8 @@ _gha_require_remote_config() {
 
     [[ "$GH_APP_ID" =~ ^[A-Za-z0-9._-]+$ ]] ||
         _gha_fail 2 "GH_APP_ID contains invalid characters."
-    [[ "$GH_INSTALLATION_ID" =~ ^[0-9]+$ ]] ||
-        _gha_fail 2 "GH_INSTALLATION_ID must be numeric."
+    [[ "$GH_APP_INSTALLATION_ID" =~ ^[0-9]+$ ]] ||
+        _gha_fail 2 "GH_APP_INSTALLATION_ID must be numeric."
 
     _gha_configure_api_base
 }
@@ -527,7 +527,7 @@ _gha_configure_api_base() {
 # Private key protection
 # --------------------------------------------------------------------------
 _gha_check_private_key() {
-    local key="$GH_PRIVATE_KEY" mode
+    local key="$GH_APP_PRIVATE_KEY" mode
     [[ -f "$key" ]] || _gha_fail 2 "Private key not found (or not a regular file): $key"
     [[ -r "$key" ]] || _gha_fail 2 "Private key is not readable: $key"
 
@@ -573,9 +573,9 @@ _gha_make_jwt() {
     p="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$iat" "$exp" "$GH_APP_ID" | _gha_base64url)"
     # -passin pass: makes an encrypted key fail instead of prompting on the TTY.
     s="$(printf '%s' "${h}.${p}" |
-        openssl dgst -sha256 -sign "$GH_PRIVATE_KEY" -passin pass: -binary 2>/dev/null |
+        openssl dgst -sha256 -sign "$GH_APP_PRIVATE_KEY" -passin pass: -binary 2>/dev/null |
         _gha_base64url)" || s=""
-    [[ -n "$s" ]] || _gha_fail 2 "Failed to sign the App JWT with GH_PRIVATE_KEY." \
+    [[ -n "$s" ]] || _gha_fail 2 "Failed to sign the App JWT with GH_APP_PRIVATE_KEY." \
         "Verify the key is the App's RSA private key."
     _GHA_JWT="${h}.${p}.${s}"
 }
@@ -680,13 +680,13 @@ _gha_http_fail() {
                 "API redirects are rejected to prevent credential forwarding." ;;
         401)
             _gha_fail 3 "$context: authentication failed (HTTP 401)$detail" \
-                "Check GH_APP_ID, that GH_PRIVATE_KEY is this App's key, and that the system clock is accurate (the JWT is time-limited)." ;;
+                "Check GH_APP_ID, that GH_APP_PRIVATE_KEY is this App's key, and that the system clock is accurate (the JWT is time-limited)." ;;
         403)
             _gha_fail 3 "$context: access denied (HTTP 403)$detail" \
                 "The App may be suspended or lack permission, or you may be rate-limited or blocked by an IP allow list." ;;
         404)
             _gha_fail 3 "$context: not found (HTTP 404)$detail" \
-                "Check GH_INSTALLATION_ID, GH_HOST/GH_API_URL, and that the App is installed on this repository." ;;
+                "Check GH_APP_INSTALLATION_ID, GH_HOST/GH_API_URL, and that the App is installed on this repository." ;;
         422)
             _gha_fail 3 "$context: request rejected (HTTP 422)$detail" \
                 "The repository is not part of this installation, or the App lacks the requested Contents permission." ;;
@@ -788,21 +788,21 @@ _gha_validate_app() {
 
 _gha_validate_installation() {
     local login suspended
-    _gha_api GET "${_GHA_API_BASE}/app/installations/${GH_INSTALLATION_ID}" "$_GHA_JWT"
+    _gha_api GET "${_GHA_API_BASE}/app/installations/${GH_APP_INSTALLATION_ID}" "$_GHA_JWT"
     [[ "$_GHA_HTTP_CODE" == "200" ]] || _gha_http_fail "Installation lookup"
 
     suspended="$(_gha_json '.suspended_at // empty')"
     [[ -z "$suspended" ]] ||
-        _gha_fail 3 "Installation $GH_INSTALLATION_ID is suspended (since $suspended)." \
+        _gha_fail 3 "Installation $GH_APP_INSTALLATION_ID is suspended (since $suspended)." \
             "Ask an organization owner to unsuspend the App."
 
     login="$(_gha_json '.account.login // empty')"
     if [[ -n "$_GHA_REPO_OWNER" && -n "$login" ]] &&
         [[ "$(_gha_lower "$login")" != "$(_gha_lower "$_GHA_REPO_OWNER")" ]]; then
-        _gha_fail 2 "Installation $GH_INSTALLATION_ID belongs to '$login' but the repository owner is '$_GHA_REPO_OWNER'." \
+        _gha_fail 2 "Installation $GH_APP_INSTALLATION_ID belongs to '$login' but the repository owner is '$_GHA_REPO_OWNER'." \
             "Use the installation ID of the App on '$_GHA_REPO_OWNER' (or select another --profile)."
     fi
-    _gha_log info "Installation $GH_INSTALLATION_ID valid (account: ${login:-unknown})"
+    _gha_log info "Installation $GH_APP_INSTALLATION_ID valid (account: ${login:-unknown})"
 }
 
 # _gha_mint_token <read|write>
@@ -817,7 +817,7 @@ _gha_mint_token() {
             '{permissions: {contents: $permission}}')"
         _gha_log info "Requesting installation token (contents: $perm) for all installation repositories"
     fi
-    _gha_api POST "${_GHA_API_BASE}/app/installations/${GH_INSTALLATION_ID}/access_tokens" \
+    _gha_api POST "${_GHA_API_BASE}/app/installations/${GH_APP_INSTALLATION_ID}/access_tokens" \
         "$_GHA_JWT" "$request"
     [[ "$_GHA_HTTP_CODE" == "201" ]] || _gha_http_fail "Token request"
 
@@ -1364,7 +1364,7 @@ git_app() {
             ;;
     esac
 
-    _gha_log info "Configuration OK (host: $GH_HOST${_GHA_PROFILE:+, profile: $_GHA_PROFILE}, key: $GH_PRIVATE_KEY)"
+    _gha_log info "Configuration OK (host: $GH_HOST${_GHA_PROFILE:+, profile: $_GHA_PROFILE}, key: $GH_APP_PRIVATE_KEY)"
 
     # ---- Dry run: local validation only, then describe what would happen ----
     if [[ "$_GHA_DRY_RUN" == "1" ]]; then
@@ -1374,11 +1374,11 @@ git_app() {
         _gha_log info "DRY RUN: no network requests are made and no token is minted"
         _gha_log info "Local checks passed: configuration, private key, JWT signing"
         if [[ "$action" == "check" ]]; then
-            _gha_log info "Would verify: App (GET /app), installation $GH_INSTALLATION_ID${_GHA_REPO_NAME:+, repository ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}}"
+            _gha_log info "Would verify: App (GET /app), installation $GH_APP_INSTALLATION_ID${_GHA_REPO_NAME:+, repository ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}}"
         elif [[ -n "$_GHA_REPO_NAME" ]]; then
-            _gha_log info "Would verify installation $GH_INSTALLATION_ID and mint a token (contents: $perm) for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME} on $GH_HOST"
+            _gha_log info "Would verify installation $GH_APP_INSTALLATION_ID and mint a token (contents: $perm) for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME} on $GH_HOST"
         else
-            _gha_log info "Would verify installation $GH_INSTALLATION_ID and mint a token (contents: $perm) for all installation repositories on $GH_HOST"
+            _gha_log info "Would verify installation $GH_APP_INSTALLATION_ID and mint a token (contents: $perm) for all installation repositories on $GH_HOST"
         fi
         if [[ ${#_GHA_CMD[@]} -gt 0 ]]; then
             _gha_log info "Would run: git -c credential.helper= $(_gha_quote_cmd "${_GHA_CMD[@]}")"

@@ -104,8 +104,8 @@ get-slack-id --email user@company.com --token xoxb-your-token
 ```bash
 # Configure credentials via environment or config file
 export GH_APP_ID="6566"
-export GH_INSTALLATION_ID="47638"
-export GH_PRIVATE_KEY="/secure/path/github-app-private-key.pem"
+export GH_APP_INSTALLATION_ID="47638"
+export GH_APP_PRIVATE_KEY="/secure/path/github-app-private-key.pem"
 export GH_HOST="https://github.example.com"
 
 # Clone, stage, commit and push with on-demand token authentication

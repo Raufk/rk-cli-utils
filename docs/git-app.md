@@ -40,8 +40,8 @@ You can configure credentials using environment variables:
 
 ```bash
 export GH_APP_ID="6566"
-export GH_INSTALLATION_ID="47638"
-export GH_PRIVATE_KEY="/secure/path/github-app-private-key.pem"
+export GH_APP_INSTALLATION_ID="47638"
+export GH_APP_PRIVATE_KEY="/secure/path/github-app-private-key.pem"
 export GH_HOST="https://github.example.com"
 ```
 
@@ -109,8 +109,8 @@ You can store configuration in `/etc/rk-cli-utils/git-app.conf` or `~/.config/rk
 ```ini
 # Base / default settings
 GH_APP_ID=1234
-GH_INSTALLATION_ID=5678
-GH_PRIVATE_KEY=~/.ssh/my-app.pem
+GH_APP_INSTALLATION_ID=5678
+GH_APP_PRIVATE_KEY=~/.ssh/my-app.pem
 GH_HOST=https://github.example.com
 GIT_USER_NAME="Release Bot"
 GIT_USER_EMAIL="bot@example.com"
@@ -126,8 +126,8 @@ Config files:
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `GH_APP_ID` | GitHub App ID (numeric) | *(Required)* |
-| `GH_INSTALLATION_ID` | Installation ID (numeric) | *(Required)* |
-| `GH_PRIVATE_KEY` | Path to unencrypted PEM private key file | *(Required)* |
+| `GH_APP_INSTALLATION_ID` | Installation ID (numeric) | *(Required)* |
+| `GH_APP_PRIVATE_KEY` | Path to unencrypted PEM private key file | *(Required)* |
 | `GH_HOST` | Host URL (e.g. `https://github.example.com` or `https://github.com`) | `https://github.com` |
 | `GH_API_URL` | API base endpoint *(Optional)* | Auto-detected (`https://api.github.com` for `github.com`, or `$GH_HOST/api/v3` for GHES) |
 | `GIT_USER_NAME` | Git author/committer name | *(System / git default)* |
@@ -145,7 +145,7 @@ Config files:
 Settings are resolved in the following order (highest precedence wins):
 
 1. **CLI Flags** (`--profile`, `--config`, `--verbose`, `--quiet`, `--dry-run`)
-2. **Environment Variables** (`GH_APP_ID`, `GH_PRIVATE_KEY`, etc.)
+2. **Environment Variables** (`GH_APP_ID`, `GH_APP_PRIVATE_KEY`, etc.)
 3. **Active Profile in Config File** (`[profile-name]`)
 4. **Default Section in User Config** (`~/.config/rk-cli-utils/git-app.conf`)
 5. **Default Section in System Config** (`/etc/rk-cli-utils/git-app.conf`)
@@ -156,20 +156,20 @@ You can manage multiple environments or organizations in a single configuration 
 
 ```ini
 # Global defaults
-GH_PRIVATE_KEY=~/.ssh/default-app.pem
+GH_APP_PRIVATE_KEY=~/.ssh/default-app.pem
 GIT_APP_PROFILE=work
 
 [work]
 GH_HOST=https://github.work.example.com
 GH_APP_ID=1234
-GH_INSTALLATION_ID=5678
+GH_APP_INSTALLATION_ID=5678
 
 [oss]
 GH_HOST=https://github.com
 # GH_API_URL is auto-detected as https://api.github.com
 GH_APP_ID=4321
-GH_INSTALLATION_ID=8765
-GH_PRIVATE_KEY=~/.ssh/oss-app.pem
+GH_APP_INSTALLATION_ID=8765
+GH_APP_PRIVATE_KEY=~/.ssh/oss-app.pem
 ```
 
 Switch profiles via `--profile` or `GIT_APP_PROFILE`:
@@ -380,7 +380,7 @@ Shell completion for Bash and Zsh is included. It provides autocompletion for co
 | :---: | :--- | :--- |
 | `0` | **Success** | Operation completed successfully. |
 | `1` | **General Error** | Git command execution failed (e.g. merge conflict, rejected non-fast-forward push). |
-| `2` | **Usage / Config Error** | Missing required parameters (`GH_APP_ID`, `GH_PRIVATE_KEY`), invalid private key permissions, insecure flags. |
+| `2` | **Usage / Config Error** | Missing required parameters (`GH_APP_ID`, `GH_APP_PRIVATE_KEY`), invalid private key permissions, insecure flags. |
 | `3` | **Network / API Error** | 401 (Invalid App ID or expired JWT / clock skew)<br>403 (Installation suspended / blocked)<br>404 (Repo not installed or wrong installation ID)<br>422 (Insufficient App permissions for action)<br>Network/DNS/TLS timeout. |
 
 ---
