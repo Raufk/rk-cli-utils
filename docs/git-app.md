@@ -193,9 +193,10 @@ git-app --profile oss config   # inspect effective config for 'oss'
 ### Core Git Actions
 
 - **`git-app clone [options] <url> [dir]`**
-  Clones a repository using a read-scoped token.
+  Clones a repository using a read-scoped token. Supports HTTPS (`https://.../org/repo[.git]`) and SSH (`git@...:org/repo[.git]` or `ssh://...`).
   ```bash
   git-app clone --depth 1 --branch v2.0 https://github.example.com/org/repo.git
+  git-app clone git@github.example.com:org/repo.git
   ```
 
 - **`git-app fetch [options] [remote] [refspec]`**

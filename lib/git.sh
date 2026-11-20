@@ -31,6 +31,7 @@ _GHA_REPO_OWNER=""
 _GHA_REPO_NAME=""
 _GHA_HTTP_CODE=""
 _GHA_HTTP_BODY=""
+_GHA_NORMALIZED_URL=""
 
 # Parsed config entries, in file/precedence order (parallel arrays).
 _GHA_CFG_N=0
@@ -701,20 +702,80 @@ _gha_http_fail() {
 }
 
 # --------------------------------------------------------------------------
-# Validation of App, installation, token and repository
+# URL parsing and normalization (decoupled from API validation)
 # --------------------------------------------------------------------------
 _gha_parse_repo_url() {
-    local url="$1" path
-    [[ "$url" == "$GH_HOST/"* ]] ||
-        _gha_fail 2 "Remote URL must belong to $GH_HOST (https, no embedded credentials): $url" \
-            "Fix with: git remote set-url <remote> $GH_HOST/<owner>/<repo>.git (or select another --profile)"
-    path="${url#"$GH_HOST"/}"
-    path="${path%/}"
-    path="${path%.git}"
-    [[ "$path" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] ||
-        _gha_fail 2 "Expected repository URL in owner/repository format: $url"
-    _GHA_REPO_OWNER="${path%%/*}"
-    _GHA_REPO_NAME="${path##*/}"
+    local raw_url="$1" url="$1" host_part="" path_part=""
+    _GHA_REPO_OWNER=""
+    _GHA_REPO_NAME=""
+    _GHA_NORMALIZED_URL=""
+
+    local host_authority="${GH_HOST#https://}"
+    local host_name="${host_authority%%:*}"
+
+    # Reject embedded user credentials in HTTP/HTTPS
+    if [[ "$url" =~ ^https?://[^/]+@ ]]; then
+        _gha_fail 2 "Remote URL contains embedded credentials: $raw_url" \
+            "Remove credentials from the remote URL. GitHub App tokens are injected automatically."
+    fi
+
+    # Reject unencrypted HTTP
+    if [[ "$url" =~ ^http:// ]]; then
+        _gha_fail 2 "Insecure HTTP remote URL is not supported: $raw_url" \
+            "Use HTTPS or SSH remote format."
+    fi
+
+    if [[ "$url" =~ ^https:// ]]; then
+        local stripped="${url#https://}"
+        host_part="${stripped%%/*}"
+        path_part="${stripped#"$host_part"}"
+        path_part="${path_part#/}"
+
+        if [[ "$(_gha_lower "$host_part")" != "$(_gha_lower "$host_authority")" &&
+              "$(_gha_lower "$host_part")" != "$(_gha_lower "$host_name")" ]]; then
+            _gha_fail 2 "Remote URL host '$host_part' does not match configured GH_HOST ($GH_HOST): $raw_url" \
+                "Select the appropriate --profile or update GH_HOST in your configuration."
+        fi
+    elif [[ "$url" =~ ^ssh:// ]]; then
+        local stripped="${url#ssh://}"
+        stripped="${stripped#*@}"  # Remove user if present (e.g. git@)
+        host_part="${stripped%%/*}"
+        local host_without_port="${host_part%%:*}"
+        path_part="${stripped#"$host_part"}"
+        path_part="${path_part#/}"
+
+        if [[ "$(_gha_lower "$host_without_port")" != "$(_gha_lower "$host_name")" ]]; then
+            _gha_fail 2 "SSH remote host '$host_without_port' does not match configured GH_HOST ($GH_HOST): $raw_url" \
+                "Select the appropriate --profile or update GH_HOST in your configuration."
+        fi
+    elif [[ "$url" =~ ^[A-Za-z0-9._-]+@[A-Za-z0-9.-]+: ]]; then
+        # SCP-like SSH syntax: git@github.com:owner/repo.git
+        host_part="${url#*@}"
+        host_part="${host_part%%:*}"
+        path_part="${url#*:}"
+
+        if [[ "$(_gha_lower "$host_part")" != "$(_gha_lower "$host_name")" ]]; then
+            _gha_fail 2 "SSH remote host '$host_part' does not match configured GH_HOST ($GH_HOST): $raw_url" \
+                "Select the appropriate --profile or update GH_HOST in your configuration."
+        fi
+    else
+        _gha_fail 2 "Unsupported or invalid repository URL format: $raw_url" \
+            "Expected HTTPS (https://$host_authority/owner/repo) or SSH (git@$host_name:owner/repo.git)."
+    fi
+
+    # Clean path: strip leading and trailing slashes, and .git suffix
+    while [[ "$path_part" == /* ]]; do path_part="${path_part#/}"; done
+    while [[ "$path_part" == */ ]]; do path_part="${path_part%/}"; done
+    path_part="${path_part%.git}"
+
+    if [[ ! "$path_part" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+        _gha_fail 2 "Expected repository in 'owner/repository' format: $raw_url" \
+            "Parsed path '$path_part' is not in 'owner/repo' format."
+    fi
+
+    _GHA_REPO_OWNER="${path_part%%/*}"
+    _GHA_REPO_NAME="${path_part##*/}"
+    _GHA_NORMALIZED_URL="https://${host_authority}/${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}.git"
 }
 
 _gha_validate_app() {
@@ -999,13 +1060,15 @@ _gha_configure_identity() {
 # It is never placed in a URL, git config, credential store or command line.
 _gha_git() {
     local gh_host_nohash="${GH_HOST#https://}"
+    local gh_host_name="${gh_host_nohash%%:*}"
     GH_APP_TOKEN="$_GHA_TOKEN" \
     GH_APP_HOST="$gh_host_nohash" \
     GIT_TERMINAL_PROMPT=0 \
     GIT_ASKPASS="$_GHA_ASKPASS" \
     GIT_ASKPASS_REQUIRE=force \
         git -c credential.helper= \
-            -c "url.https://${gh_host_nohash}/.insteadOf=git@${gh_host_nohash}:" \
+            -c "url.https://${gh_host_nohash}/.insteadOf=git@${gh_host_name}:" \
+            -c "url.https://${gh_host_nohash}/.insteadOf=ssh://git@${gh_host_name}/" \
             "$@"
 }
 
@@ -1033,7 +1096,7 @@ ASKPASS_EOF
 # working tree (default: origin). Prints nothing when it cannot be determined.
 _gha_detect_repo_url() {
     local target="${1:-}" top url=""
-    if [[ "$target" == https://* ]]; then
+    if [[ "$target" == https://* || "$target" == http://* || "$target" == git@* || "$target" == ssh://* ]]; then
         url="$target"
     elif top="$(git rev-parse --show-toplevel 2>/dev/null)"; then
         url="$(git -C "$top" remote get-url "${target:-origin}" 2>/dev/null)" || url=""
@@ -1199,13 +1262,12 @@ git_app() {
         clone)
             _gha_parse_git_args clone "$@"
             n=${#_GHA_POS[@]}
-            [[ $n -ge 1 ]] || _gha_fail 2 "Usage: rk git-app clone [git-clone options] <https-repo-url> [directory]"
+            [[ $n -ge 1 ]] || _gha_fail 2 "Usage: rk git-app clone [git-clone options] <repo-url> [directory]"
             [[ $n -le 2 ]] || _gha_fail 2 "Too many arguments for clone: ${_GHA_POS[2]}"
             repo_url="${_GHA_POS[0]}"
             destination="${_GHA_POS[1]:-}"
-            [[ "$repo_url" == https://* ]] || _gha_fail 2 "Repository URL must use HTTPS."
             _gha_parse_repo_url "$repo_url"
-            _GHA_CMD=(clone ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"} -- "$repo_url")
+            _GHA_CMD=(clone ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"} -- "$_GHA_NORMALIZED_URL")
             if [[ -n "$destination" ]]; then _GHA_CMD+=("$destination"); fi
             ;;
         fetch | pull | push)
@@ -1234,8 +1296,6 @@ git_app() {
                     repo_url="$(git -C "$repo_dir" remote get-url "$remote" 2>/dev/null)" ||
                         _gha_fail 2 "Git remote '$remote' is not configured in this repository."
                 fi
-                [[ "$repo_url" == https://* ]] ||
-                    _gha_fail 2 "Remote '$remote' must use HTTPS for GitHub App token authentication."
                 _gha_parse_repo_url "$repo_url"
 
                 if [[ ${#refspecs[@]} -eq 0 ]]; then
