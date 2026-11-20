@@ -1213,37 +1213,48 @@ git_app() {
                 _gha_fail 2 "Run 'rk git-app $action' from inside the Git working tree."
             _gha_parse_git_args "$action" "$@"
             n=${#_GHA_POS[@]}
-            remote="${_GHA_POS[0]:-origin}"
-            for ((i = 1; i < n; i++)); do refspecs+=("${_GHA_POS[i]}"); done
 
-            if [[ "$action" == "push" ]]; then
-                repo_url="$(git -C "$repo_dir" remote get-url --push "$remote" 2>/dev/null)" ||
-                    _gha_fail 2 "Git remote '$remote' is not configured in this repository."
-                perm="write"
-            else
-                repo_url="$(git -C "$repo_dir" remote get-url "$remote" 2>/dev/null)" ||
-                    _gha_fail 2 "Git remote '$remote' is not configured in this repository."
-            fi
-            [[ "$repo_url" == https://* ]] ||
-                _gha_fail 2 "Remote '$remote' must use HTTPS for GitHub App token authentication."
-            _gha_parse_repo_url "$repo_url"
-
-            if [[ ${#refspecs[@]} -eq 0 ]]; then
-                if [[ "$action" == "push" ]] && _gha_has_opt --delete -d; then
-                    _gha_fail 2 "push --delete needs an explicit branch." \
-                        "e.g. rk git-app push --delete $remote old-branch"
-                elif [[ "$action" == "push" ]] && _gha_has_opt --tags --all --mirror; then
-                    : # these push sets of refs; do not add the current branch
-                elif [[ "$action" == "pull" || "$action" == "push" ]]; then
-                    local cur_branch
-                    cur_branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD)" ||
-                        _gha_fail 2 "Cannot determine the current branch." \
-                            "Supply a branch, e.g. 'rk git-app $action $remote main'."
-                    refspecs+=("$cur_branch")
+            if [[ "$action" == "fetch" ]] && _gha_has_opt --all; then
+                if [[ $n -gt 0 ]]; then
+                    _gha_fail 2 "fetch --all does not take a repository argument: ${_GHA_POS[0]}"
                 fi
+                # For fetch --all across multiple remotes, mint an installation-wide token
+                _GHA_REPO_OWNER=""
+                _GHA_REPO_NAME=""
+                _GHA_CMD=(-C "$repo_dir" "$action" ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"})
+            else
+                remote="${_GHA_POS[0]:-origin}"
+                for ((i = 1; i < n; i++)); do refspecs+=("${_GHA_POS[i]}"); done
+
+                if [[ "$action" == "push" ]]; then
+                    repo_url="$(git -C "$repo_dir" remote get-url --push "$remote" 2>/dev/null)" ||
+                        _gha_fail 2 "Git remote '$remote' is not configured in this repository."
+                    perm="write"
+                else
+                    repo_url="$(git -C "$repo_dir" remote get-url "$remote" 2>/dev/null)" ||
+                        _gha_fail 2 "Git remote '$remote' is not configured in this repository."
+                fi
+                [[ "$repo_url" == https://* ]] ||
+                    _gha_fail 2 "Remote '$remote' must use HTTPS for GitHub App token authentication."
+                _gha_parse_repo_url "$repo_url"
+
+                if [[ ${#refspecs[@]} -eq 0 ]]; then
+                    if [[ "$action" == "push" ]] && _gha_has_opt --delete -d; then
+                        _gha_fail 2 "push --delete needs an explicit branch." \
+                            "e.g. rk git-app push --delete $remote old-branch"
+                    elif [[ "$action" == "push" ]] && _gha_has_opt --tags --all --mirror; then
+                        : # these push sets of refs; do not add the current branch
+                    elif [[ "$action" == "pull" || "$action" == "push" ]]; then
+                        local cur_branch
+                        cur_branch="$(git -C "$repo_dir" symbolic-ref --quiet --short HEAD)" ||
+                            _gha_fail 2 "Cannot determine the current branch." \
+                                "Supply a branch, e.g. 'rk git-app $action $remote main'."
+                        refspecs+=("$cur_branch")
+                    fi
+                fi
+                _GHA_CMD=(-C "$repo_dir" "$action" ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"} "$remote"
+                    ${refspecs[@]+"${refspecs[@]}"})
             fi
-            _GHA_CMD=(-C "$repo_dir" "$action" ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"} "$remote"
-                ${refspecs[@]+"${refspecs[@]}"})
             ;;
         check)
             [[ $# -le 1 ]] || _gha_fail 2 "Usage: rk git-app check [repo-url | remote]"
