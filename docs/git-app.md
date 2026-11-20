@@ -392,3 +392,4 @@ Shell completion for Bash and Zsh is included. It provides autocompletion for co
 4. **Key File Protection:** Private key files are enforced to have `0600` permissions.
 5. **Log Redaction:** All tokens are automatically stripped/redacted from `stderr` and log files, even in `--verbose` or `--debug` modes.
 6. **Remote URL Validation:** Enforces HTTPS remotes matching `GH_HOST` to prevent accidental credential dispatch to unintended hosts.
+7. **Strict API Origin & Redirect Protection:** `GH_API_URL` is strictly validated against `GH_HOST` (must match enterprise host or `api.github.com`), embedded credentials in URLs are blocked, and HTTP redirects are rejected to prevent credential exfiltration.

@@ -473,19 +473,53 @@ _gha_require_remote_config() {
     [[ "$GH_INSTALLATION_ID" =~ ^[0-9]+$ ]] ||
         _gha_fail 2 "GH_INSTALLATION_ID must be numeric."
 
+    _gha_configure_api_base
+}
+
+# Validate and establish the API base URL.
+# Enforces strict origin and path boundaries to prevent credential leakage.
+_gha_configure_api_base() {
     GH_HOST="${GH_HOST%/}"
     [[ "$GH_HOST" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] ||
         _gha_fail 2 "GH_HOST must look like https://host (HTTPS only, no path): $GH_HOST"
 
+    local host_authority="${GH_HOST#https://}"
+    local host_lower="$(_gha_lower "$GH_HOST")"
+
     if [[ -n "${GH_API_URL:-}" ]]; then
-        _GHA_API_BASE="${GH_API_URL}"
-    elif [[ "$GH_HOST" == "https://github.com" ]]; then
+        local api_url="${GH_API_URL%/}"
+        [[ "$api_url" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?(/.*)?$ ]] ||
+            _gha_fail 2 "GH_API_URL must be a valid HTTPS URL: $GH_API_URL"
+
+        if [[ "$api_url" == *"@"* ]]; then
+            _gha_fail 2 "GH_API_URL must not contain embedded user credentials: $GH_API_URL"
+        fi
+
+        if [[ "$host_lower" == "https://github.com" ]]; then
+            local api_lower="$(_gha_lower "$api_url")"
+            if [[ "$api_lower" != "https://api.github.com" &&
+                  "$api_lower" != "https://api.github.com/api/v3" ]]; then
+                _gha_fail 2 "Invalid GH_API_URL for github.com: $GH_API_URL" \
+                    "For github.com, the API endpoint is https://api.github.com (or leave GH_API_URL unset)."
+            fi
+        else
+            local api_authority="${api_url#https://}"
+            api_authority="${api_authority%%/*}"
+            if [[ "$(_gha_lower "$api_authority")" != "$(_gha_lower "$host_authority")" ]]; then
+                _gha_fail 2 "GH_API_URL host ($api_authority) does not match GH_HOST ($host_authority)." \
+                    "For GitHub Enterprise, API requests must target the configured enterprise host."
+            fi
+            local api_path="${api_url#https://"$api_authority"}"
+            if [[ -z "$api_path" || "$api_path" != /api* ]]; then
+                _gha_fail 2 "GH_API_URL for GitHub Enterprise must point to an API path (e.g. ${GH_HOST}/api/v3): $GH_API_URL"
+            fi
+        fi
+        _GHA_API_BASE="$api_url"
+    elif [[ "$host_lower" == "https://github.com" ]]; then
         _GHA_API_BASE="https://api.github.com"
     else
         _GHA_API_BASE="${GH_HOST}/api/v3"
     fi
-    _GHA_API_BASE="${_GHA_API_BASE%/}"
-    [[ "$_GHA_API_BASE" == https://* ]] || _gha_fail 2 "GH_API_URL must use HTTPS."
 }
 
 # --------------------------------------------------------------------------
@@ -604,7 +638,7 @@ _gha_api() {
     local method="$1" url="$2" bearer="$3" data="${4:-}" out rc errtxt wait
     local attempt=0 max="${GIT_APP_RETRIES:-3}"
     local errfile="${_GHA_TMP_DIR}/curl.err" hdr="${_GHA_TMP_DIR}/curl.hdr"
-    local -a args=(--silent --show-error --connect-timeout 15 --max-time 60
+    local -a args=(--silent --show-error --proto =https --connect-timeout 15 --max-time 60
         --request "$method" --header "Accept: application/vnd.github+json"
         --dump-header "$hdr" --write-out $'\n%{http_code}')
     if [[ -n "$data" ]]; then
@@ -640,6 +674,9 @@ _gha_http_fail() {
     msg="$(_gha_api_message)"
     if [[ -n "$msg" ]]; then detail=" - GitHub says: $msg"; fi
     case "$_GHA_HTTP_CODE" in
+        3??)
+            _gha_fail 3 "$context: received unexpected HTTP redirect (HTTP $_GHA_HTTP_CODE)$detail" \
+                "API redirects are rejected to prevent credential forwarding." ;;
         401)
             _gha_fail 3 "$context: authentication failed (HTTP 401)$detail" \
                 "Check GH_APP_ID, that GH_PRIVATE_KEY is this App's key, and that the system clock is accurate (the JWT is time-limited)." ;;
@@ -1069,18 +1106,7 @@ git_app() {
             _gha_require_commands curl
             [[ -n "$GH_HOST" ]] || _gha_fail 2 "Missing required configuration: GH_HOST" \
                 "Set GH_HOST or a config file ($(_gha_user_config_path))."
-            GH_HOST="${GH_HOST%/}"
-            [[ "$GH_HOST" =~ ^https://[A-Za-z0-9.-]+(:[0-9]+)?$ ]] ||
-                _gha_fail 2 "GH_HOST must look like https://host (HTTPS only, no path): $GH_HOST"
-            if [[ -n "${GH_API_URL:-}" ]]; then
-                _GHA_API_BASE="${GH_API_URL}"
-            elif [[ "$GH_HOST" == "https://github.com" ]]; then
-                _GHA_API_BASE="https://api.github.com"
-            else
-                _GHA_API_BASE="${GH_HOST}/api/v3"
-            fi
-            _GHA_API_BASE="${_GHA_API_BASE%/}"
-            [[ "$_GHA_API_BASE" == https://* ]] || _gha_fail 2 "GH_API_URL must use HTTPS."
+            _gha_configure_api_base
             _GHA_TOKEN="${GH_APP_TOKEN:-}"
             if [[ -z "$_GHA_TOKEN" && ! -t 0 ]]; then IFS= read -r _GHA_TOKEN || true; fi
             [[ -n "$_GHA_TOKEN" ]] || _gha_fail 2 "No token to revoke." \
