@@ -5,7 +5,7 @@
 ### _Supercharge Your DevOps Workflow_ ⚡
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0-blue.svg)](https://github.com/Raufk/rk-cli-utils/releases)
+[![Version](https://img.shields.io/badge/version-1.1-blue.svg)](https://github.com/Raufk/rk-cli-utils/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://www.linux.org/)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
 [![RHEL](https://img.shields.io/badge/RHEL-EE0000?logo=redhat&logoColor=white)](https://www.redhat.com/)

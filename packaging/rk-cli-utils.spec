@@ -53,4 +53,4 @@ install -D -m 0644 completions/_git-app %{buildroot}%{_datadir}/zsh/site-functio
 
 %changelog
 * Wed Nov 18 2026 Rauf K - 1.1-1
-- Initial release
+- Release version 1.1: GitHub App git operations, Slack payload improvements, SSH key setup hardening

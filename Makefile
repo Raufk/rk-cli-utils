@@ -71,6 +71,7 @@ deb: prepare
 	echo "Description: CLI utilities for DevOps workflows" >> $(DEB_DIR)/DEBIAN/control
 
 	dpkg-deb --build $(DEB_DIR)
+	cp $(BUILD_DIR)/deb/$(NAME)-$(VERSION).deb $(BUILD_DIR)/deb/$(NAME).deb 2>/dev/null || true
 
 	@echo "==========================================="
 	@echo "DEB created in : $(BUILD_DIR)/deb/"
