@@ -46,20 +46,20 @@ main() {
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --user)
-                        [[ -z "$2" ]] && die "--user requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--user requires value"
                         user="$2"; shift 2 ;;
                     --email)
-                        [[ -z "$2" ]] && die "--email requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--email requires value"
                         email="$2"; shift 2 ;;
                     --key-file)
-                        [[ -z "$2" ]] && die "--key-file requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--key-file requires value"
                         key="$2"; shift 2 ;;
                     --host)
-                        if [[ -z "$2" || "$2" == --* ]]; then
+                        if [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]]; then
+                            host="$2"; shift 2
+                        else
                             echo "Warning: --host provided without value, ignoring" >&2
                             shift 1
-                        else
-                            host="$2"; shift 2
                         fi
                         ;;
                     *)
@@ -74,7 +74,7 @@ main() {
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --color)
-                        if [[ -n "$2" && "$2" != --* ]]; then
+                        if [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]]; then
                             color="$2"; shift 2
                         else
                             echo "Warning: --color provided without value, ignoring" >&2
@@ -82,13 +82,13 @@ main() {
                         fi
                         ;;
                     --channel)
-                        [[ -z "$2" ]] && die "--channel requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--channel requires value"
                         channel="$2"; shift 2 ;;
                     --message)
-                        [[ -z "$2" ]] && die "--message requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--message requires value"
                         message="$2"; shift 2 ;;
                     --token)
-                        [[ -z "$2" ]] && die "--token requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--token requires value"
                         token="$2"; shift 2 ;;
                     *)
                         usage ;;
@@ -102,10 +102,10 @@ main() {
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --email)
-                        [[ -z "$2" ]] && die "--email requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--email requires value"
                         email="$2"; shift 2 ;;
                     --token)
-                        [[ -z "$2" ]] && die "--token requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--token requires value"
                         token="$2"; shift 2 ;;
                     *)
                         usage ;;
