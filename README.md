@@ -257,12 +257,24 @@ make clean
 
 ### Command Overview
 
-| Command        | Description         | Example                                                              |
-| -------------- | ------------------- | -------------------------------------------------------------------- |
-| `setup-ssh`    | Configure SSH & Git | `setup-ssh --email dev@co.com --user "Dev" --key-file ~/.ssh/id_rsa` |
-| `slack-send`   | Send Slack messages | `slack-send --token TOKEN --channel "#ops" --message "Hello!"`       |
-| `get-slack-id` | Get Slack user ID   | `get-slack-id --email user@co.com --token TOKEN`                     |
-| `git-app`      | Git via GitHub App  | `git-app push origin main`                                           |
+Commands can be invoked directly (e.g. `git-app`) or through the main CLI dispatcher `rk` (e.g. `rk git-app`):
+
+| Command | Action / Description | Example |
+| :--- | :--- | :--- |
+| `setup-ssh` | Configure SSH & Git credentials | `setup-ssh --email dev@co.com --user "Dev" --key-file ~/.ssh/id_rsa` |
+| `slack-send` | Send Slack notifications | `slack-send --token $TOKEN --channel "#ops" --message "Deployed!"` |
+| `get-slack-id` | Look up Slack user ID by email | `get-slack-id --email user@co.com --token $TOKEN` |
+| `git-app clone` | Clone repository via App token | `git-app clone https://github.com/org/repo.git` |
+| `git-app fetch` | Fetch refs (`--all`, `--prune`, `--tags`) | `git-app fetch --all` |
+| `git-app pull` | Pull and rebase/merge | `git-app pull --rebase origin main` |
+| `git-app push` | Push changes safely | `git-app push --force-with-lease origin main` |
+| `git-app add` | Stage changes locally | `git-app add .` |
+| `git-app commit` | Commit with configured identity | `git-app commit -m "Release v1.2.0"` |
+| `git-app check` | Validate App, key, and install access | `git-app check` |
+| `git-app session` | Reusable token for batch workflows | `git-app session --write -- make release` |
+| `git-app token` | Mint standalone token (e.g. Docker) | `TOKEN=$(git-app token --all-repos)` |
+| `git-app revoke` | Revoke standalone token early | `printf '%s' "$TOKEN" \| git-app revoke` |
+| `git-app config` | Manage configs and profiles | `git-app config init` / `git-app config show` |
 
 ### 📚 Detailed Examples
 
@@ -355,6 +367,46 @@ SLACK_ID=$(get-slack-id \
 
 echo "User ID: $SLACK_ID"
 ```
+
+</details>
+
+<details>
+<summary><b>🔑 GitHub App Git Examples</b></summary>
+
+#### Clone, Commit, and Push
+```bash
+# Clone repository
+git-app clone https://github.com/org/repo.git
+cd repo
+
+# Stage, commit, and push
+git-app add .
+git-app commit "feat: add automated build config"
+git-app push origin main
+```
+
+#### Pre-flight Verification & Dry-run
+```bash
+# Verify credentials, installation, and permissions
+git-app check
+
+# Inspect what would run without network calls or minting a token
+git-app --dry-run push origin main
+```
+
+#### Docker & Multi-Repo Workflows
+```bash
+# Mint token for all repositories in the installation
+TOKEN=$(git-app token --all-repos)
+
+# Use in Docker BuildKit build
+DOCKER_BUILDKIT=1 docker build --secret id=gh_token,env=TOKEN -t my-app:latest .
+
+# Revoke token when done
+printf '%s' "$TOKEN" | git-app revoke
+```
+
+👉 See **[docs/git-app.md](docs/git-app.md)** for full documentation and configuration guides.
 
 </details>
 

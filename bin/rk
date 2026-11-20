@@ -32,8 +32,8 @@ Usage:
     rk get-slack-id --email <email> --token <token>
     get-slack-id --email <email> --token <token>
 
-    rk git-app <clone|add|commit|fetch|pull|push|token> [args]   (GitHub App token auth)
-    git-app <clone|add|commit|fetch|pull|push|token> [args]
+    rk git-app <clone|add|commit|fetch|pull|push|check|session|token|revoke|config> [args]
+    git-app <clone|add|commit|fetch|pull|push|check|session|token|revoke|config> [args]
     rk git-app help
 EOF
     exit 0
