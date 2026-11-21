@@ -1165,8 +1165,15 @@ git_app() {
     case "$action" in
         clone | add | commit | fetch | pull | push | check | session | token | revoke | config | sps) ;;
         *)
-            git_app_usage >&2
-            _gha_fail 2 "Unknown action: $action" ;;
+            # Passthrough standard git commands (status, checkout, branch, switch, diff, log, etc.)
+            repo_dir="$(git rev-parse --show-toplevel 2>/dev/null)" || repo_dir=""
+            if [[ -n "$repo_dir" ]]; then
+                _gha_configure_identity "$repo_dir"
+                exec git -C "$repo_dir" "$action" "$@"
+            else
+                exec git "$action" "$@"
+            fi
+            ;;
     esac
 
     _gha_load_config
