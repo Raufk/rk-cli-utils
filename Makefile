@@ -1,6 +1,6 @@
 # =========== Config ===========
 NAME := rk-cli-utils
-VERSION := 1.0
+VERSION := 1.1
 RELEASE := 1
 
 BUILD_DIR := build
@@ -34,15 +34,12 @@ rpm: prepare
 	@echo "==========================================="
 	@echo "Building RPM..."
 
-	mkdir -p $(RPMBUILD)/SOURCES/$(NAME)-$(VERSION)
-	cp -r bin lib wrappers $(RPMBUILD)/SOURCES/$(NAME)-$(VERSION)/
-	cp $(BUILD_DIR)/rk $(RPMBUILD)/SOURCES/$(NAME)-$(VERSION)/bin/rk
-
-	cd $(RPMBUILD)/SOURCES && tar -czf $(NAME)-$(VERSION).tar.gz $(NAME)-$(VERSION)
-
+	cp -r bin lib wrappers completions $(RPMBUILD)/SOURCES/
+	cp $(BUILD_DIR)/rk $(RPMBUILD)/SOURCES/bin/rk
 	cp packaging/$(NAME).spec $(RPMBUILD)/SPECS/
 
 	rpmbuild -ba $(RPMBUILD)/SPECS/$(NAME).spec
+	cp $(RPMBUILD)/RPMS/noarch/$(NAME)-*.rpm $(RPMBUILD)/RPMS/noarch/$(NAME).rpm 2>/dev/null || true
 
 	@echo "==========================================="
 	@echo "RPM created in $(RPMBUILD)/RPMS/"
@@ -59,6 +56,9 @@ deb: prepare
 	# Install files
 	install -m 0755 $(BUILD_DIR)/rk $(BIN_DIR)/rk
 	install -m 0755 wrappers/* $(BIN_DIR)/
+	install -D -m 0644 completions/git-app.bash $(DEB_DIR)/usr/share/bash-completion/completions/git-app
+	install -D -m 0644 completions/git-app.bash $(DEB_DIR)/usr/share/bash-completion/completions/rk
+	install -D -m 0644 completions/_git-app $(DEB_DIR)/usr/share/zsh/site-functions/_git-app
 	install -m 0644 lib/*.sh $(LIB_DIR)/
 
 	# Control file
@@ -67,11 +67,12 @@ deb: prepare
 	echo "Section: utils" >> $(DEB_DIR)/DEBIAN/control
 	echo "Priority: optional" >> $(DEB_DIR)/DEBIAN/control
 	echo "Architecture: all" >> $(DEB_DIR)/DEBIAN/control
-	echo "Depends: bash, git, curl, jq, openssh-client" >> $(DEB_DIR)/DEBIAN/control
+	echo "Depends: bash, git, curl, jq, openssh-client, openssl" >> $(DEB_DIR)/DEBIAN/control
 	echo "Maintainer: Rauf K" >> $(DEB_DIR)/DEBIAN/control
 	echo "Description: CLI utilities for DevOps workflows" >> $(DEB_DIR)/DEBIAN/control
 
 	dpkg-deb --build $(DEB_DIR)
+	cp $(BUILD_DIR)/deb/$(NAME)-$(VERSION).deb $(BUILD_DIR)/deb/$(NAME).deb 2>/dev/null || true
 
 	@echo "==========================================="
 	@echo "DEB created in : $(BUILD_DIR)/deb/"

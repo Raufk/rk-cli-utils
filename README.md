@@ -5,7 +5,7 @@
 ### _Supercharge Your DevOps Workflow_ ⚡
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Version](https://img.shields.io/badge/version-1.0-blue.svg)](https://github.com/Raufk/rk-cli-utils/releases)
+[![Version](https://img.shields.io/badge/version-1.1-blue.svg)](https://github.com/Raufk/rk-cli-utils/releases)
 [![Platform](https://img.shields.io/badge/platform-Linux-lightgrey.svg)](https://www.linux.org/)
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
 [![RHEL](https://img.shields.io/badge/RHEL-EE0000?logo=redhat&logoColor=white)](https://www.redhat.com/)
@@ -97,6 +97,42 @@ get-slack-id --email user@company.com --token xoxb-your-token
 
 ---
 
+### 🔑 Git over GitHub App Token
+
+> Perform Git operations using short-lived, repo-scoped GitHub App installation tokens
+
+```bash
+# Configure credentials via environment or config file
+export GH_APP_ID="6566"
+export GH_APP_INSTALLATION_ID="47638"
+export GH_APP_PRIVATE_KEY="/secure/path/github-app-private-key.pem"
+export GH_HOST="https://github.example.com"
+
+# Clone, stage, commit and push with on-demand token authentication
+git-app clone --depth 1 --branch main https://github.example.com/org/repo.git
+cd repo
+git-app add .
+git-app commit "Update configuration"
+git-app push origin main
+
+# Validate credentials or run batch sessions
+git-app check
+git-app session --write -- make release
+```
+
+**Key Features:**
+
+- 🛡️ **Zero Token Leakage:** In-memory credential passing via `GIT_ASKPASS`, automatic token revocation on exit, and log redaction
+- 🎯 **Least Privilege:** Short-lived tokens scoped strictly to the target repository (`read` or `write`)
+- 🔄 **Standard Git Passthrough:** Supports standard flags (`--depth`, `--branch`, `--force-with-lease`, `--rebase`, `--prune`, etc.)
+- 🏢 **Multi-Profile Support:** Manage multiple GitHub hosts, Apps, or organizations in a single config
+- 🔁 **Resilient:** Automatic retries with exponential back-off and rate-limit (`Retry-After`) handling
+- ⚡ **Workflow & Docker Integration:** Reusable session tokens and BuildKit secret integration (`git-app session`, `git-app token`)
+
+📖 **[Full git-app Documentation](docs/git-app.md)** — Complete guide with configuration reference, multi-profile examples, Docker BuildKit recipes, and troubleshooting.
+
+---
+
 ## 📦 Installation
 
 ### 🚀 Quick Install (Auto-detect OS)
@@ -121,7 +157,7 @@ curl -fsSL https://raw.githubusercontent.com/Raufk/rk-cli-utils/main/install/ins
 
 ```bash
 # Download the latest release
-curl -LO https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils.deb
+curl -LO https://github.com/Raufk/rk-cli-utils/releases/latest/download/rk-cli-utils.deb
 
 # Install
 sudo dpkg -i rk-cli-utils.deb
@@ -137,11 +173,11 @@ rk --version
 
 ```bash
 # Download and install directly
-sudo yum install https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
+sudo yum install https://github.com/Raufk/rk-cli-utils/releases/latest/download/rk-cli-utils.rpm
 
 # Or download first, then install
-wget https://github.com/Raufk/rk-cli-utils/releases/download/v1.0/rk-cli-utils-1.0-1.el9.noarch.rpm
-sudo yum localinstall rk-cli-utils-1.0-1.el9.noarch.rpm
+curl -LO https://github.com/Raufk/rk-cli-utils/releases/latest/download/rk-cli-utils.rpm
+sudo yum localinstall rk-cli-utils.rpm
 
 # Verify installation
 rk --version
@@ -221,11 +257,24 @@ make clean
 
 ### Command Overview
 
-| Command        | Description         | Example                                                              |
-| -------------- | ------------------- | -------------------------------------------------------------------- |
-| `setup-ssh`    | Configure SSH & Git | `setup-ssh --email dev@co.com --user "Dev" --key-file ~/.ssh/id_rsa` |
-| `slack-send`   | Send Slack messages | `slack-send --token TOKEN --channel "#ops" --message "Hello!"`       |
-| `get-slack-id` | Get Slack user ID   | `get-slack-id --email user@co.com --token TOKEN`                     |
+Commands can be invoked directly (e.g. `git-app`) or through the main CLI dispatcher `rk` (e.g. `rk git-app`):
+
+| Command | Action / Description | Example |
+| :--- | :--- | :--- |
+| `setup-ssh` | Configure SSH & Git credentials | `setup-ssh --email dev@co.com --user "Dev" --key-file ~/.ssh/id_rsa` |
+| `slack-send` | Send Slack notifications | `slack-send --token $TOKEN --channel "#ops" --message "Deployed!"` |
+| `get-slack-id` | Look up Slack user ID by email | `get-slack-id --email user@co.com --token $TOKEN` |
+| `git-app clone` | Clone repository via App token | `git-app clone https://github.com/org/repo.git` |
+| `git-app fetch` | Fetch refs (`--all`, `--prune`, `--tags`) | `git-app fetch --all` |
+| `git-app pull` | Pull and rebase/merge | `git-app pull --rebase origin main` |
+| `git-app push` | Push changes safely | `git-app push --force-with-lease origin main` |
+| `git-app add` | Stage changes locally | `git-app add .` |
+| `git-app commit` | Commit with configured identity | `git-app commit -m "Release v1.2.0"` |
+| `git-app check` | Validate App, key, and install access | `git-app check` |
+| `git-app session` | Reusable token for batch workflows | `git-app session --write -- make release` |
+| `git-app token` | Mint standalone token (e.g. Docker) | `TOKEN=$(git-app token --all-repos)` |
+| `git-app revoke` | Revoke standalone token early | `printf '%s' "$TOKEN" \| git-app revoke` |
+| `git-app config` | Manage configs and profiles | `git-app config init` / `git-app config show` |
 
 ### 📚 Detailed Examples
 
@@ -321,6 +370,46 @@ echo "User ID: $SLACK_ID"
 
 </details>
 
+<details>
+<summary><b>🔑 GitHub App Git Examples</b></summary>
+
+#### Clone, Commit, and Push
+```bash
+# Clone repository
+git-app clone https://github.com/org/repo.git
+cd repo
+
+# Stage, commit, and push
+git-app add .
+git-app commit "feat: add automated build config"
+git-app push origin main
+```
+
+#### Pre-flight Verification & Dry-run
+```bash
+# Verify credentials, installation, and permissions
+git-app check
+
+# Inspect what would run without network calls or minting a token
+git-app --dry-run push origin main
+```
+
+#### Docker & Multi-Repo Workflows
+```bash
+# Mint token for all repositories in the installation
+TOKEN=$(git-app token --all-repos)
+
+# Use in Docker BuildKit build
+DOCKER_BUILDKIT=1 docker build --secret id=gh_token,env=TOKEN -t my-app:latest .
+
+# Revoke token when done
+printf '%s' "$TOKEN" | git-app revoke
+```
+
+👉 See **[docs/git-app.md](docs/git-app.md)** for full documentation and configuration guides.
+
+</details>
+
 ---
 
 ## 🏗️ Architecture
@@ -331,10 +420,17 @@ rk-cli-utils/
 │   └── rk                    # Main CLI dispatcher
 ├── 📁 lib/
 │   ├── ssh.sh               # SSH setup logic
+│   ├── git.sh               # GitHub App token git operations
 │   └── slack.sh             # Slack API integration
+├── 📁 docs/
+│   └── git-app.md           # In-depth git-app documentation
+├── 📁 completions/
+│   ├── git-app.bash         # bash completion (git-app, rk)
+│   └── _git-app             # zsh completion (git-app, rk)
 ├── 📁 wrappers/
 │   ├── setup-ssh            # Direct command wrapper
 │   ├── slack-send           # Direct command wrapper
+│   ├── git-app              # Direct command wrapper
 │   └── get-slack-id         # Direct command wrapper
 ├── 📁 packaging/
 │   └── rk-cli-utils.spec    # RPM package specification
@@ -354,6 +450,7 @@ rk-cli-utils/
 | `curl`            | HTTP client       | `yum install curl`            |
 | `jq`              | JSON processor    | `yum install jq`              |
 | `openssh-clients` | SSH tools         | `yum install openssh-clients` |
+| `openssl`         | JWT signing (`git-app`) | `yum install openssl`   |
 
 ---
 

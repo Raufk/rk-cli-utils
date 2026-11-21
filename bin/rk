@@ -23,14 +23,18 @@ done
 usage() {
     cat <<EOF
 Usage:
-    rk setup-ssh --email <email> --user <user> --key-file <file> [--host github.ibm.com]
-    setup-ssh --email <email> --user <user> --key-file <file> [--host github.ibm.com]
+    rk setup-ssh --email <email> --user <user> --key-file <file> [--host github.example.com]
+    setup-ssh --email <email> --user <user> --key-file <file> [--host github.example.com]
 
     rk slack-send --token <token> --channel <channel[,channel2]> --message <msg> [--color good|warning|danger|#hex]
     slack-send --token <token> --channel <channel[,channel2]> --message <msg> [--color good|warning|danger|#hex]
 
     rk get-slack-id --email <email> --token <token>
     get-slack-id --email <email> --token <token>
+
+    rk git-app <clone|add|commit|fetch|pull|push|check|session|token|revoke|config> [args]
+    git-app <clone|add|commit|fetch|pull|push|check|session|token|revoke|config> [args]
+    rk git-app help
 EOF
     exit 0
 }
@@ -42,27 +46,27 @@ main() {
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --user)
-                        [[ -z "$2" ]] && die "--user requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--user requires value"
                         user="$2"; shift 2 ;;
                     --email)
-                        [[ -z "$2" ]] && die "--email requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--email requires value"
                         email="$2"; shift 2 ;;
                     --key-file)
-                        [[ -z "$2" ]] && die "--key-file requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--key-file requires value"
                         key="$2"; shift 2 ;;
                     --host)
-                        if [[ -z "$2" || "$2" == --* ]]; then
+                        if [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]]; then
+                            host="$2"; shift 2
+                        else
                             echo "Warning: --host provided without value, ignoring" >&2
                             shift 1
-                        else
-                            host="$2"; shift 2
                         fi
                         ;;
                     *)
                         usage ;;
                 esac
             done
-            source $SCRIPT_DIR/ssh.sh
+            source "$SCRIPT_DIR/ssh.sh"
             setup_ssh "${user:-}" "${email:-}" "${key:-}" "${host:-}"
             ;;
         slack-send)
@@ -70,7 +74,7 @@ main() {
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --color)
-                        if [[ -n "$2" && "$2" != --* ]]; then
+                        if [[ $# -ge 2 && -n "${2:-}" && "$2" != --* ]]; then
                             color="$2"; shift 2
                         else
                             echo "Warning: --color provided without value, ignoring" >&2
@@ -78,19 +82,19 @@ main() {
                         fi
                         ;;
                     --channel)
-                        [[ -z "$2" ]] && die "--channel requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--channel requires value"
                         channel="$2"; shift 2 ;;
                     --message)
-                        [[ -z "$2" ]] && die "--message requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--message requires value"
                         message="$2"; shift 2 ;;
                     --token)
-                        [[ -z "$2" ]] && die "--token requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--token requires value"
                         token="$2"; shift 2 ;;
                     *)
                         usage ;;
                 esac
             done
-            source $SCRIPT_DIR/slack.sh
+            source "$SCRIPT_DIR/slack.sh"
             slack_send "${color:-good}" "$channel" "$message" "$token"
             ;;
         get-slack-id)
@@ -98,20 +102,24 @@ main() {
             while [[ $# -gt 0 ]]; do
                 case "$1" in
                     --email)
-                        [[ -z "$2" ]] && die "--email requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--email requires value"
                         email="$2"; shift 2 ;;
                     --token)
-                        [[ -z "$2" ]] && die "--token requires value"
+                        [[ $# -ge 2 && -n "${2:-}" ]] || die "--token requires value"
                         token="$2"; shift 2 ;;
                     *)
                         usage ;;
                 esac
             done
-            source $SCRIPT_DIR/slack.sh
+            source "$SCRIPT_DIR/slack.sh"
             get_slack_user_id "$email" "$token"
             ;;
+        git-app)
+            source "$SCRIPT_DIR/git.sh"
+            git_app "$@"
+            ;;
         --version|-v)
-            printf "\nRK Cli Utils -\n  Version : %s\n Maintainer : Rauf K (abdulraufkc111@gmail.com)\n\n" "$VERSION"
+            printf "\nRK Cli Utils -\n  Version : %s\n  Maintainer : Rauf K (abdulraufkc111@gmail.com)\n\n" "$VERSION"
             exit 0
             ;;
         --help|-h|"")

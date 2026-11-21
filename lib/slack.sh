@@ -34,28 +34,15 @@ construct_slack_payload() {
     local color="$2"
     local message="$3"
 
-    # Initialize the payload
-    local payload="{\"channel\":\"$channel\",\"attachments\":["
-
-    # Process message to split on "~"
-    # IFS=$'\n' read -r -d '' -a sections <<<"$(echo -e "$message")"
-    if [[ $message =~ .*~.* ]]; then
-        IFS='~' read -r -a sections <<< "$message"
-    else
-        sections=("$message")
-    fi
-
-    # Iterate over sections to create attachments
-    for section in "${sections[@]}"; do
-        # Clean and escape the section text
-        local escaped_section=$(echo "$section" | sed 's/"/\\"/g')
-        payload+="{\"color\":\"$color\",\"text\":\"$escaped_section\"},"
-    done
-
-    # Finalize the payload
-    payload="${payload%,}]}"
-
-    echo "$payload"
+    # Use jq to robustly escape text and split on '~' delimiter
+    jq -n \
+        --arg channel "$channel" \
+        --arg color "$color" \
+        --arg msg "$message" \
+        '{
+            channel: $channel,
+            attachments: ($msg | split("~") | map({color: $color, text: .}))
+        }'
 }
 
 # Function to send a message to Slack
@@ -66,36 +53,48 @@ slack_send() {
     local slack_token="$4"
 
     # Validation
-    [[ -z "$slack_token" ]] && { echo "missing slack token" >&2; return 2; }
-    [[ -z "$slack_channels" ]] && { echo "missing channel" >&2; return 2; }
-    [[ -z "$slack_message" ]] && { echo "missing message" >&2; return 2; }
+    [[ -z "$slack_token" ]] && { echo "Error: missing Slack token" >&2; return 2; }
+    [[ -z "$slack_channels" ]] && { echo "Error: missing channel" >&2; return 2; }
+    [[ -z "$slack_message" ]] && { echo "Error: missing message" >&2; return 2; }
     [[ -z "$slack_color" ]] && slack_color="good" # Optional: default color
 
     local -a channelList
     IFS=',' read -r -a channelList <<< "$slack_channels"
 
-    for channel in "${channelList[@]}"; do
-        local payload response ok error
-        # Define the JSON payload
-        # payload="{\"channel\":\"$channel\",\"text\":\"\",\"attachments\":[{\"color\":\"$SLACK_COLOR\",\"text\":\"$SLACK_MESSAGE\"}]}"
-        payload=$(construct_slack_payload "$channel" "$slack_color" "$slack_message")
-        # Send the message to Slack
-        response=$(curl -sS -X POST \
-        -H "Authorization: Bearer $slack_token" \
-        -H "Content-Type: application/json; charset=utf-8" \
-        -d "$payload" \
-        https://slack.com/api/chat.postMessage) || {
-            echo "curl failed for channel $channel" >&2
-            continue
-        }
+    local failures=0
 
-        ok=$(jq -r '.ok' <<< "$response")
-        error=$(jq -r '.error // empty' <<< "$response")
+    for channel in "${channelList[@]}"; do
+        channel="$(echo "$channel" | xargs)"
+        [[ -z "$channel" ]] && continue
+
+        local payload response ok error
+        payload=$(construct_slack_payload "$channel" "$slack_color" "$slack_message")
+
+        # Send the message to Slack
+        if ! response=$(curl -sS -X POST \
+            -H "Authorization: Bearer $slack_token" \
+            -H "Content-Type: application/json; charset=utf-8" \
+            -d "$payload" \
+            https://slack.com/api/chat.postMessage 2>&1); then
+            echo "❌ Network error sending to channel '$channel': $response" >&2
+            failures=$((failures + 1))
+            continue
+        fi
+
+        ok=$(jq -r '.ok // false' <<< "$response" 2>/dev/null || echo "false")
+        error=$(jq -r '.error // empty' <<< "$response" 2>/dev/null || echo "")
 
         if [[ "$ok" != "true" ]]; then
-        echo "❌ Slack message failed for $channel: ${error:-unknown}" >&2
-        echo "$response" >&2
+            echo "❌ Slack message failed for '$channel': ${error:-unknown error}" >&2
+            echo "$response" >&2
+            failures=$((failures + 1))
+        else
+            echo "✅ Slack message successfully sent to $channel"
         fi
-        echo "Slack message successfully sent to $channel"
     done
+
+    if (( failures > 0 )); then
+        return 1
+    fi
+    return 0
 }

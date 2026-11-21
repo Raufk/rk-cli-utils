@@ -1,0 +1,131 @@
+#compdef git-app rk
+# zsh completion for rk / git-app (rk-cli-utils)
+
+_gha_profiles() {
+    local -a profiles
+    if (( $+commands[git-app] )); then
+        profiles=(${(f)"$(git-app config profiles 2>/dev/null)"})
+    else
+        profiles=(${(f)"$(rk git-app config profiles 2>/dev/null)"})
+    fi
+    compadd -a profiles
+}
+
+_gha_remotes() {
+    local -a remotes
+    remotes=(${(f)"$(git remote 2>/dev/null)"})
+    compadd -a remotes
+}
+
+_gha_branches() {
+    local -a branches
+    branches=(${(f)"$(git for-each-ref --format='%(refname:short)' refs/heads refs/remotes 2>/dev/null)"})
+    compadd -a branches
+}
+
+_gha_global_opts() {
+    _arguments -s -S \
+        '--profile=[use a named profile from the config files]:profile:_gha_profiles' \
+        '--config=[extra config file]:file:_files' \
+        '--dry-run[validate locally, no network, nothing modified]' \
+        '--verbose[debug logging]' \
+        '--quiet[only warnings and errors]' \
+        '(-h --help)'{-h,--help}'[show help]' \
+        '(-V --version)'{-V,--version}'[show version]' \
+        '*::git-app action:_gha_action'
+}
+
+_gha_action() {
+    local -a actions
+    actions=(
+        'clone:clone a repository with an App token'
+        'add:stage changes'
+        'commit:commit staged changes'
+        'fetch:fetch from a remote'
+        'pull:pull from a remote'
+        'push:push to a remote'
+        'check:validate configuration, App, installation and repository'
+        'session:mint one token and run a command or shell with it'
+        'token:mint one token and print it on stdout (not revoked, valid up to 1h)'
+        'revoke:revoke a token from $GH_APP_TOKEN or stdin'
+        'config:show or initialise configuration'
+        'help:show help'
+        'version:show version'
+    )
+    if (( CURRENT == 1 )); then
+        _describe -t actions 'git-app action' actions
+        return
+    fi
+    local action="$words[1]"
+    case "$action" in
+        clone)
+            _arguments \
+                '--depth=[shallow clone depth]:depth' \
+                '(-b --branch)'{-b,--branch=}'[branch to check out]:branch' \
+                '--single-branch[clone one branch]' \
+                '--recurse-submodules[initialise submodules]' \
+                '--filter=[partial clone filter]:spec' \
+                '--bare[bare repository]' \
+                '--mirror[mirror repository]' \
+                '--no-tags[do not fetch tags]' \
+                '1:repository URL' '2:directory:_files -/' ;;
+        fetch)
+            _arguments \
+                '--all[fetch all remotes]' '--prune[remove stale refs]' '--tags[fetch all tags]' \
+                '--no-tags[no tags]' '--depth=[depth]:depth' '--unshallow[make complete]' \
+                '--force[force update]' '--dry-run[show what would be done]' \
+                '1:remote:_gha_remotes' '*:refspec:_gha_branches' ;;
+        pull)
+            _arguments \
+                '--rebase[rebase instead of merge]' '--ff-only[fast-forward only]' \
+                '--no-ff[always create a merge commit]' '--autostash[stash local changes]' \
+                '--prune[remove stale refs]' '--tags[fetch all tags]' '--depth=[depth]:depth' \
+                '1:remote:_gha_remotes' '*:branch:_gha_branches' ;;
+        push)
+            _arguments \
+                '--force-with-lease[safe force push]' '--force[force push]' '--tags[push all tags]' \
+                '--follow-tags[push annotated tags]' '--all[push all branches]' \
+                '--delete[delete remote refs]' '(-u --set-upstream)'{-u,--set-upstream}'[set upstream]' \
+                '--dry-run[do everything except send]' '--atomic[atomic push]' \
+                '1:remote:_gha_remotes' '*:branch:_gha_branches' ;;
+        add) _arguments '*:file:_files' ;;
+        commit) _arguments '(-m --message)'{-m,--message=}'[commit message]:message' '(-a --all)'{-a,--all}'[stage tracked changes]' '--amend[amend previous commit]' '--no-verify[skip hooks]' ;;
+        check) _arguments '1:repo URL or remote:_gha_remotes' ;;
+        token) _arguments '--write[request write permission]' '--all-repos[mint token for all installation repositories]' '--repo=[repository URL or remote]:remote:_gha_remotes' ;;
+        session) _arguments '--write[request write permission]' '--all-repos[mint token for all installation repositories]' '--repo=[repository URL or remote]:remote:_gha_remotes' ;;
+        config) _arguments '1:subcommand:(show init profiles)' ;;
+    esac
+}
+
+_git_app() {
+    _gha_global_opts
+}
+
+_rk() {
+    if (( CURRENT == 2 )); then
+        local -a subs
+        subs=(
+            'setup-ssh:configure Git and SSH'
+            'slack-send:send Slack messages'
+            'get-slack-id:look up a Slack user ID'
+            'git-app:Git over GitHub App token'
+        )
+        _describe -t commands 'rk command' subs
+        return
+    fi
+    # _arguments expects words[1] to be the command name, so drop "rk".
+    local sub="$words[2]"
+    shift 1 words
+    (( CURRENT -= 1 ))
+    case "$sub" in
+        git-app) _gha_global_opts ;;
+        setup-ssh) _arguments -S '--email[git email]:email' '--user[git user name]:user' '--key-file[private key file or content]:key file:_files' '--host[git host]:host' ;;
+        slack-send) _arguments -S '--token[Slack token]:token' '--channel[channel(s), comma separated]:channel' '--message[message, ~ separates sections]:message' '--color[attachment colour]:color:(good warning danger)' ;;
+        get-slack-id) _arguments -S '--email[user email]:email' '--token[Slack token]:token' ;;
+    esac
+}
+
+case "$service" in
+    git-app) _git_app "$@" ;;
+    rk) _rk "$@" ;;
+esac

@@ -1,2 +1,6 @@
 #!/usr/bin/env bash
-exec /usr/bin/rk setup-ssh "$@"
+if [[ -x /usr/bin/rk ]]; then
+    exec /usr/bin/rk setup-ssh "$@"
+else
+    exec rk setup-ssh "$@"
+fi

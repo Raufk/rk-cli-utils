@@ -1,0 +1,10 @@
+build/
+rpmbuild/
+*.rpm
+*.deb
+.env
+.env.*
+*.pem
+*.key
+git-app.conf
+.bob/
