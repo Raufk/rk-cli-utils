@@ -1,2 +1,6 @@
 #!/usr/bin/env bash
-exec /usr/bin/rk get-slack-id "$@"
+if [[ -x /usr/bin/rk ]]; then
+    exec /usr/bin/rk get-slack-id "$@"
+else
+    exec rk get-slack-id "$@"
+fi

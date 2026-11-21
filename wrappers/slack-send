@@ -1,2 +1,6 @@
 #!/usr/bin/env bash
-exec /usr/bin/rk slack-send "$@"
+if [[ -x /usr/bin/rk ]]; then
+    exec /usr/bin/rk slack-send "$@"
+else
+    exec rk slack-send "$@"
+fi
