@@ -32,6 +32,7 @@ _GHA_REPO_NAME=""
 _GHA_HTTP_CODE=""
 _GHA_HTTP_BODY=""
 _GHA_NORMALIZED_URL=""
+_GHA_KEY_FILE=""
 
 # Parsed config entries, in file/precedence order (parallel arrays).
 _GHA_CFG_N=0
@@ -397,12 +398,16 @@ _gha_load_config() {
 }
 
 _gha_config_show() {
-    local k src val
+    local k src val display_val
     printf '%-20s %-40s %s\n' "KEY" "VALUE" "SOURCE"
     for k in $_GHA_CONFIG_KEYS; do
         val="${!k}"
+        display_val="$val"
+        if [[ "$k" == "GH_APP_PRIVATE_KEY" ]] && grep -q "BEGIN .*PRIVATE KEY" <<< "$val"; then
+            display_val="(in-memory PEM key)"
+        fi
         src="_GHA_SRC_$k"
-        printf '%-20s %-40s %s\n' "$k" "${val:--}" "${!src}"
+        printf '%-20s %-40s %s\n' "$k" "${display_val:--}" "${!src}"
     done
 }
 
@@ -528,6 +533,26 @@ _gha_configure_api_base() {
 # --------------------------------------------------------------------------
 _gha_check_private_key() {
     local key="$GH_APP_PRIVATE_KEY" mode
+
+    # Support raw PEM content directly in GH_APP_PRIVATE_KEY
+    if grep -q "BEGIN .*PRIVATE KEY" <<< "$key"; then
+        openssl pkey -noout -passin pass: <<< "$key" >/dev/null 2>&1 ||
+            _gha_fail 2 "GH_APP_PRIVATE_KEY is not a valid unencrypted PEM key." \
+                "Passphrase-protected keys are not supported."
+
+        _GHA_KEY_FILE="${_GHA_TMP_DIR}/app.pem"
+        (
+            umask 077
+            printf "%s\n" "$key" > "$_GHA_KEY_FILE"
+        )
+        chmod 600 "$_GHA_KEY_FILE"
+        return 0
+    fi
+
+    if [[ "$key" == "~/"* ]]; then
+        key="$HOME/${key#\~/}"
+    fi
+
     [[ -f "$key" ]] || _gha_fail 2 "Private key not found (or not a regular file): $key"
     [[ -r "$key" ]] || _gha_fail 2 "Private key is not readable: $key"
 
@@ -545,6 +570,8 @@ _gha_check_private_key() {
     openssl pkey -in "$key" -noout -passin pass: </dev/null >/dev/null 2>&1 ||
         _gha_fail 2 "Private key is not a valid unencrypted PEM key: $key" \
             "Download the key from the GitHub App settings page; passphrase-protected keys are not supported."
+
+    _GHA_KEY_FILE="$key"
 }
 
 # --------------------------------------------------------------------------
@@ -573,7 +600,7 @@ _gha_make_jwt() {
     p="$(printf '{"iat":%s,"exp":%s,"iss":"%s"}' "$iat" "$exp" "$GH_APP_ID" | _gha_base64url)"
     # -passin pass: makes an encrypted key fail instead of prompting on the TTY.
     s="$(printf '%s' "${h}.${p}" |
-        openssl dgst -sha256 -sign "$GH_APP_PRIVATE_KEY" -passin pass: -binary 2>/dev/null |
+        openssl dgst -sha256 -sign "$_GHA_KEY_FILE" -passin pass: -binary 2>/dev/null |
         _gha_base64url)" || s=""
     [[ -n "$s" ]] || _gha_fail 2 "Failed to sign the App JWT with GH_APP_PRIVATE_KEY." \
         "Verify the key is the App's RSA private key."
@@ -1381,7 +1408,11 @@ EOF
             ;;
     esac
 
-    _gha_log info "Configuration OK (host: $GH_HOST${_GHA_PROFILE:+, profile: $_GHA_PROFILE}, key: $GH_APP_PRIVATE_KEY)"
+    local key_display="$GH_APP_PRIVATE_KEY"
+    if grep -q "BEGIN .*PRIVATE KEY" <<< "$key_display"; then
+        key_display="(in-memory PEM key)"
+    fi
+    _gha_log info "Configuration OK (host: $GH_HOST${_GHA_PROFILE:+, profile: $_GHA_PROFILE}, key: $key_display)"
 
     # ---- Dry run: local validation only, then describe what would happen ----
     if [[ "$_GHA_DRY_RUN" == "1" ]]; then
