@@ -63,6 +63,7 @@ Actions:
     fetch [git-fetch options] [remote] [refspec...]
     pull  [git-pull options]  [remote] [refspec...]
     push  [git-push options]  [remote] [refspec...]
+    ls-remote [remote | repo-url]     List references in a remote repository
     check [repo-url | remote]         Validate configuration, App, installation
                                       and (optionally) repository access
     session [--write] [--all-repos | --repo <url|remote>] [-- command [args...]]
@@ -1163,7 +1164,7 @@ git_app() {
     if [[ -z "$action" ]]; then git_app_usage; return 0; fi
 
     case "$action" in
-        clone | add | commit | fetch | pull | push | check | session | token | revoke | config | sps) ;;
+        clone | add | commit | fetch | pull | push | ls-remote | check | session | token | revoke | config | sps) ;;
         *)
             # Passthrough standard git commands (status, checkout, branch, switch, diff, log, etc.)
             repo_dir="$(git rev-parse --show-toplevel 2>/dev/null)" || repo_dir=""
@@ -1251,7 +1252,7 @@ EOF
             if [[ "$_GHA_DRY_RUN" == "1" ]]; then
                 _gha_log info "DRY RUN: git add --dry-run (nothing is staged)"
                 if [[ "$#" -gt 0 ]]; then
-                    git -C "$repo_dir" add --dry-run -- "$@"
+                    git -C "$repo_dir" add --dry-run "$@"
                 else
                     git -C "$repo_dir" add --dry-run -A
                 fi
@@ -1259,7 +1260,7 @@ EOF
             fi
             _gha_configure_identity "$repo_dir"
             if [[ "$#" -gt 0 ]]; then
-                git -C "$repo_dir" add -- "$@"
+                git -C "$repo_dir" add "$@"
             else
                 git -C "$repo_dir" add -A
             fi
@@ -1366,6 +1367,14 @@ EOF
                 _GHA_CMD=(-C "$repo_dir" "$action" ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"} "$remote"
                     ${refspecs[@]+"${refspecs[@]}"})
             fi
+            ;;
+        ls-remote)
+            target="${1:-origin}"
+            repo_url="$(_gha_detect_repo_url "$target")"
+            if [[ -z "$repo_url" && -n "$target" ]]; then repo_url="$target"; fi
+            [[ -n "$repo_url" ]] || _gha_fail 2 "Usage: rk git-app ls-remote [repo-url | remote] [args...]"
+            _gha_parse_repo_url "$repo_url"
+            _GHA_CMD=(ls-remote "$@")
             ;;
         check)
             [[ $# -le 1 ]] || _gha_fail 2 "Usage: rk git-app check [repo-url | remote]"
@@ -1536,6 +1545,10 @@ EOF
         push)
             _gha_configure_identity "$repo_dir"
             _gha_log info "Pushing to remote $remote"
+            _gha_git "${_GHA_CMD[@]}"
+            ;;
+        ls-remote)
+            _gha_log info "Listing remote references for $repo_url"
             _gha_git "${_GHA_CMD[@]}"
             ;;
     esac
