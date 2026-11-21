@@ -21,10 +21,11 @@ cp -r packaging/rk-cli-utils.spec ~/rpmbuild/SPECS/
 printf "\n======================================================"
 printf "\n===== Building RPM package..."
 rpmbuild -ba ~/rpmbuild/SPECS/rk-cli-utils.spec
+cp ~/rpmbuild/RPMS/noarch/rk-cli-utils-*.rpm ~/rpmbuild/RPMS/noarch/rk-cli-utils.rpm 2>/dev/null || true
 
 printf "\n======================================================"
 printf "\n===== RPM package built successfully..."
-ls -l ~/rpmbuild/RPMS/noarch/rk-cli-utils-*.rpm
+ls -l ~/rpmbuild/RPMS/noarch/rk-cli-utils*.rpm
 
 printf "\n======================================================"
 printf "\n===== To install the package, run:"

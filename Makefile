@@ -39,6 +39,7 @@ rpm: prepare
 	cp packaging/$(NAME).spec $(RPMBUILD)/SPECS/
 
 	rpmbuild -ba $(RPMBUILD)/SPECS/$(NAME).spec
+	cp $(RPMBUILD)/RPMS/noarch/$(NAME)-*.rpm $(RPMBUILD)/RPMS/noarch/$(NAME).rpm 2>/dev/null || true
 
 	@echo "==========================================="
 	@echo "RPM created in $(RPMBUILD)/RPMS/"
