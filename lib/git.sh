@@ -1136,7 +1136,7 @@ git_app() {
     if [[ -z "$action" ]]; then git_app_usage; return 0; fi
 
     case "$action" in
-        clone | add | commit | fetch | pull | push | check | session | token | revoke | config) ;;
+        clone | add | commit | fetch | pull | push | check | session | token | revoke | config | sps) ;;
         *)
             git_app_usage >&2
             _gha_fail 2 "Unknown action: $action" ;;
@@ -1151,6 +1151,23 @@ git_app() {
 
     local repo_dir=""
     case "$action" in
+        sps)
+            case "${1:-}" in
+                init)
+                    cat <<'EOF'
+export GH_APP_ID="$(get_env git-app-id)"
+export GH_APP_INSTALLATION_ID="$(get_env git-app-installation-id)"
+export GH_HOST="$(get_env git-host)"
+export GIT_USER_NAME="$(get_env git-user-name)"
+export GIT_USER_EMAIL="$(get_env git-user-email)"
+export GH_APP_PRIVATE_KEY="$(get_env git-app-private-key)"
+EOF
+                    return 0
+                    ;;
+                *)
+                    _gha_fail 2 "Usage: rk git-app sps init" ;;
+            esac
+            ;;
         config)
             case "${1:-}" in
                 "" | show)
