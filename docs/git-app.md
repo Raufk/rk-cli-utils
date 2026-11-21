@@ -130,8 +130,8 @@ Config files:
 | `GH_APP_PRIVATE_KEY` | Path to unencrypted PEM private key file | *(Required)* |
 | `GH_HOST` | Host URL (e.g. `https://github.example.com` or `https://github.com`) | `https://github.com` |
 | `GH_API_URL` | API base endpoint *(Optional)* | Auto-detected (`https://api.github.com` for `github.com`, or `$GH_HOST/api/v3` for GHES) |
-| `GIT_USER_NAME` | Git author/committer name | *(System / git default)* |
-| `GIT_USER_EMAIL` | Git author/committer email | *(System / git default)* |
+| `GIT_USER_NAME` | Git author/committer name. **Required** for `commit` and `push` | *(Required for commit/push)* |
+| `GIT_USER_EMAIL` | Git author/committer email. **Required** for `commit` and `push` | *(Required for commit/push)* |
 | `GIT_APP_PROFILE` | Active profile name | None (uses default section) |
 | `GIT_APP_CONFIG` | Path to custom config file | `~/.config/rk-cli-utils/git-app.conf` |
 | `GIT_APP_RETRIES` | Max retry attempts for HTTP 429/5xx | `3` |
@@ -225,7 +225,7 @@ git-app --profile oss config   # inspect effective config for 'oss'
   ```
 
 - **`git-app commit [options] <message>`**
-  Commits staged changes. Uses `GIT_USER_NAME` and `GIT_USER_EMAIL` if configured.
+  Commits staged changes. `GIT_USER_NAME` and `GIT_USER_EMAIL` are required so every commit is attributed to a known identity; the command fails with exit code 2 if either is missing.
   ```bash
   git-app commit "Release version 1.2.0"
   ```

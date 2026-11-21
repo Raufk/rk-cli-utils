@@ -112,7 +112,7 @@ Configuration (environment variables override config files):
     GH_APP_PRIVATE_KEY       Path to the App private-key PEM (unencrypted, mode 600)
     GH_HOST              e.g. https://github.example.com (or https://github.com)
     GH_API_URL           API base URL (auto-detected: https://api.github.com or \$GH_HOST/api/v3)
-    GIT_USER_NAME / GIT_USER_EMAIL   Local commit identity (set both or neither)
+    GIT_USER_NAME / GIT_USER_EMAIL   Commit identity (both required for commit and push)
     GIT_APP_PROFILE      Default profile (same as --profile)
     GIT_APP_RETRIES      Retries on HTTP 429/5xx (default 3, 0 disables)
     GIT_APP_RETRY_DELAY  Base back-off in seconds (default 2, doubles per retry)
@@ -1073,7 +1073,7 @@ _gha_cleanup() {
 
 _gha_configure_identity() {
     local repo_dir="$1"
-    if [[ -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]]; then
+    if [[ -n "${GIT_USER_NAME:-}" && -n "${GIT_USER_EMAIL:-}" ]]; then
         if [[ ! -d "$repo_dir" ]]; then
             _gha_log warn "Cannot set commit identity: directory not found: $repo_dir"
             return 0
@@ -1183,6 +1183,18 @@ git_app() {
         [[ -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]] ||
             _gha_fail 2 "Set both GIT_USER_NAME and GIT_USER_EMAIL, or leave both unset."
     fi
+    # Every commit and push must be attributable to a known identity.
+    case "$action" in
+        commit | push)
+            [[ -n "$GIT_USER_NAME" && -n "$GIT_USER_EMAIL" ]] ||
+                _gha_fail 2 "GIT_USER_NAME and GIT_USER_EMAIL are required for '$action'." \
+                    "Set both in the environment or a config file (see 'rk git-app config')."
+            local email_re='^[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}$'
+            [[ "$GIT_USER_EMAIL" =~ $email_re ]] ||
+                _gha_fail 2 "GIT_USER_EMAIL is not a valid email address: $GIT_USER_EMAIL" \
+                    "Use the form name@domain.tld."
+            ;;
+    esac
 
     local repo_dir=""
     case "$action" in
