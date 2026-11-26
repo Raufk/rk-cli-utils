@@ -33,6 +33,7 @@ _GHA_HTTP_CODE=""
 _GHA_HTTP_BODY=""
 _GHA_NORMALIZED_URL=""
 _GHA_KEY_FILE=""
+_GHA_PROXY=""             # proxy from git's http.<GH_HOST>.proxy (passed to curl)
 
 # Parsed config entries, in file/precedence order (parallel arrays).
 _GHA_CFG_N=0
@@ -527,6 +528,18 @@ _gha_configure_api_base() {
     else
         _GHA_API_BASE="${GH_HOST}/api/v3"
     fi
+
+    # Use the proxy git uses for this host (http.<host>.proxy), as git clone does.
+    # An explicit HTTPS_PROXY/https_proxy in the environment takes precedence.
+    _GHA_PROXY=""
+    if [[ -z "${HTTPS_PROXY:-}${https_proxy:-}" ]]; then
+        _GHA_PROXY="$(git config --get-urlmatch http.proxy "${GH_HOST}/" 2>/dev/null || true)"
+        local proxy_re='^(https?|socks5h?)://[^"[:space:]]+$'
+        if [[ -n "$_GHA_PROXY" && ! "$_GHA_PROXY" =~ $proxy_re ]]; then
+            _gha_fail 2 "Git http.proxy for $GH_HOST is not a valid proxy URL." \
+                "Check: git config --get-urlmatch http.proxy ${GH_HOST}/"
+        fi
+    fi
 }
 
 # --------------------------------------------------------------------------
@@ -587,8 +600,10 @@ _gha_base64url() {
 _gha_curl_with_bearer() {
     local bearer="$1"
     shift
-    printf 'header = "Authorization: Bearer %s"\n' "$bearer" |
-        curl --config - "$@"
+    {
+        printf 'header = "Authorization: Bearer %s"\n' "$bearer"
+        if [[ -n "$_GHA_PROXY" ]]; then printf 'proxy = "%s"\n' "$_GHA_PROXY"; fi
+    } | curl --config - "$@"
 }
 
 _gha_make_jwt() {
