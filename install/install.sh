@@ -4,6 +4,10 @@ set -euo pipefail
 REPO="Raufk/rk-cli-utils"
 LATEST_URL="https://github.com/${REPO}/releases/latest/download"
 
+# SHA-256 of the release packages. Update these with every release.
+DEB_SHA256="5fdaad20e1dc2c54609779d4cac0ea80e910f830e5e6147a22af8b75495058bd"
+RPM_SHA256="412874c3f904bc18927ab961584b8ed4547c1e9a604a939f98cf334f66e4cc07"
+
 # Determine privilege escalation (root vs sudo)
 SUDO=""
 if [[ "$(id -u)" -ne 0 ]]; then
@@ -33,6 +37,7 @@ case "$os" in
     ubuntu|debian|pop|mint)
         echo "Ubuntu/Debian detected. Installing latest rk-cli-utils..."
         curl -fsSL -o "${TMP_DIR}/rk-cli-utils.deb" "${LATEST_URL}/rk-cli-utils.deb"
+        echo "${DEB_SHA256}  ${TMP_DIR}/rk-cli-utils.deb" | sha256sum -c -
         export DEBIAN_FRONTEND=noninteractive
         $SUDO dpkg -i "${TMP_DIR}/rk-cli-utils.deb" || $SUDO apt-get install -f -y
         rk --version
@@ -44,10 +49,9 @@ case "$os" in
         else
             PKG_MGR="yum"
         fi
-        if ! $SUDO "$PKG_MGR" install -y "${LATEST_URL}/rk-cli-utils.rpm"; then
-            curl -fsSL -o "${TMP_DIR}/rk-cli-utils.rpm" "${LATEST_URL}/rk-cli-utils.rpm"
-            $SUDO "$PKG_MGR" localinstall -y "${TMP_DIR}/rk-cli-utils.rpm"
-        fi
+        curl -fsSL -o "${TMP_DIR}/rk-cli-utils.rpm" "${LATEST_URL}/rk-cli-utils.rpm"
+        echo "${RPM_SHA256}  ${TMP_DIR}/rk-cli-utils.rpm" | sha256sum -c -
+        $SUDO "$PKG_MGR" localinstall -y "${TMP_DIR}/rk-cli-utils.rpm"
         rk --version
         ;;
     *)

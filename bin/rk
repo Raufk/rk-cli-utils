@@ -134,6 +134,12 @@ cmd="${1:-}"
 shift || true
 
 VERSION="@VERSION@"
-SCRIPT_DIR="/usr/lib/rk-cli-utils"
+SCRIPT_DIR="${SCRIPT_DIR:-/usr/lib/rk-cli-utils}"
+if [[ ! -d "$SCRIPT_DIR" ]]; then
+    _rel_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd || true)"
+    if [[ -d "$_rel_lib" ]]; then
+        SCRIPT_DIR="$_rel_lib"
+    fi
+fi
 
 main "$@"
