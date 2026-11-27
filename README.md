@@ -140,8 +140,10 @@ git-app session --write -- make release
 The installation script automatically detects your Linux distribution and installs the appropriate package:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Raufk/rk-cli-utils/main/install/install.sh | bash
+curl -fsSL -o install.sh https://raw.githubusercontent.com/Raufk/rk-cli-utils/main/install/install.sh && echo "06fdbc1d960e744d707ced345de4bf2815816404cc40183d33f8bc7de7d9df2d  install.sh" | sha256sum -c - && bash install.sh
 ```
+
+The script is downloaded and checked against the SHA-256 above before it runs. If the check fails, nothing is executed. The hash changes whenever `install/install.sh` changes.
 
 **Supported Platforms:**
 
