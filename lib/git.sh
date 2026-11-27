@@ -470,7 +470,7 @@ CONF_EOF
 
 _gha_require_remote_config() {
     local k missing=""
-    for k in GH_APP_ID GH_APP_INSTALLATION_ID GH_APP_PRIVATE_KEY GH_HOST; do
+    for k in GH_APP_ID GH_APP_PRIVATE_KEY GH_HOST; do
         if [[ -z "${!k}" ]]; then missing="$missing $k"; fi
     done
     [[ -z "$missing" ]] || _gha_fail 2 "Missing required configuration:$missing" \
@@ -478,8 +478,10 @@ _gha_require_remote_config() {
 
     [[ "$GH_APP_ID" =~ ^[A-Za-z0-9._-]+$ ]] ||
         _gha_fail 2 "GH_APP_ID contains invalid characters."
-    [[ "$GH_APP_INSTALLATION_ID" =~ ^[0-9]+$ ]] ||
-        _gha_fail 2 "GH_APP_INSTALLATION_ID must be numeric."
+    if [[ -n "$GH_APP_INSTALLATION_ID" ]]; then
+        [[ "$GH_APP_INSTALLATION_ID" =~ ^[0-9]+$ ]] ||
+            _gha_fail 2 "GH_APP_INSTALLATION_ID must be numeric."
+    fi
 
     _gha_configure_api_base
 }
@@ -824,6 +826,24 @@ _gha_validate_app() {
     _gha_log info "App credentials valid (app: ${slug:-unknown})"
 }
 
+# Sets GH_APP_INSTALLATION_ID from the repository when it was not configured.
+# GET /repos/{owner}/{repo}/installation returns the App installation that
+# covers the repository. Without a repository there is nothing to look up.
+_gha_resolve_installation() {
+    [[ -z "$GH_APP_INSTALLATION_ID" ]] || return 0
+    [[ -n "$_GHA_REPO_NAME" ]] ||
+        _gha_fail 2 "GH_APP_INSTALLATION_ID is not set and no repository was given to look it up." \
+            "Set GH_APP_INSTALLATION_ID, or pass a repository."
+    _gha_api GET "${_GHA_API_BASE}/repos/${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}/installation" "$_GHA_JWT"
+    [[ "$_GHA_HTTP_CODE" == "200" ]] ||
+        _gha_http_fail "Installation lookup for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}"
+    GH_APP_INSTALLATION_ID="$(_gha_json '.id | select(type == "number") | tostring')"
+    [[ "$GH_APP_INSTALLATION_ID" =~ ^[0-9]+$ ]] ||
+        _gha_fail 3 "Could not find the App installation for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}." \
+            "Check that the App is installed on this repository."
+    _gha_log info "Resolved installation $GH_APP_INSTALLATION_ID for ${_GHA_REPO_OWNER}/${_GHA_REPO_NAME}"
+}
+
 _gha_validate_installation() {
     local login suspended
     _gha_api GET "${_GHA_API_BASE}/app/installations/${GH_APP_INSTALLATION_ID}" "$_GHA_JWT"
@@ -897,6 +917,7 @@ _gha_validate_repo() {
 _gha_mint_and_validate() {
     _gha_check_private_key
     _gha_make_jwt
+    _gha_resolve_installation
     _gha_validate_installation
     _gha_mint_token "$1"
     if [[ -n "$_GHA_REPO_NAME" ]]; then
@@ -1546,6 +1567,7 @@ EOF
         _gha_check_private_key
         _gha_make_jwt
         _gha_validate_app
+        _gha_resolve_installation
         _gha_validate_installation
         if [[ -n "$_GHA_REPO_NAME" ]]; then
             _gha_mint_token read

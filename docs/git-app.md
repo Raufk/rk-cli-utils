@@ -126,9 +126,9 @@ Config files:
 | Variable | Description | Default |
 | :--- | :--- | :--- |
 | `GH_APP_ID` | GitHub App ID (numeric) | *(Required)* |
-| `GH_APP_INSTALLATION_ID` | Installation ID (numeric) | *(Required)* |
+| `GH_APP_INSTALLATION_ID` | Installation ID (numeric). Optional for repo-scoped commands: when unset, it is resolved from the repository (`GET /repos/{owner}/{repo}/installation`). **Required** for `--all-repos` | *(Optional)* |
 | `GH_APP_PRIVATE_KEY` | Path to unencrypted PEM private key file | *(Required)* |
-| `GH_HOST` | Host URL (e.g. `https://github.example.com` or `https://github.com`) | `https://github.com` |
+| `GH_HOST` | Host URL (e.g. `https://github.example.com` or `https://github.com`). Also selects the proxy: `HTTPS_PROXY` if set, otherwise git's `http.<GH_HOST>.proxy` | *(Required)* |
 | `GH_API_URL` | API base endpoint *(Optional)* | Auto-detected (`https://api.github.com` for `github.com`, or `$GH_HOST/api/v3` for GHES) |
 | `GIT_USER_NAME` | Git author/committer name. **Required** for `commit` and `push` | *(Required for commit/push)* |
 | `GIT_USER_EMAIL` | Git author/committer email. **Required** for `commit` and `push` | *(Required for commit/push)* |
@@ -201,8 +201,10 @@ git-app --profile oss config   # inspect effective config for 'oss'
 
 - **`git-app fetch [options] [remote] [refspec]`**
   Fetches updates using a read-scoped token.
+  `--all` fetches only remotes whose host matches `GH_HOST`; other remotes are skipped with a warning.
   ```bash
   git-app fetch --prune --tags origin
+  git-app fetch --all
   ```
 
 - **`git-app pull [options] [remote] [branch]`**
@@ -229,6 +231,10 @@ git-app --profile oss config   # inspect effective config for 'oss'
   ```bash
   git-app commit "Release version 1.2.0"
   ```
+
+### Remotes with Embedded Tokens
+
+If a remote URL contains credentials (for example `https://x-access-token:<token>@github.example.com/org/repo.git`), `git-app` ignores the embedded credentials. It uses the cleaned URL and the App token for `fetch`, `pull`, `push`, `ls-remote`, and `clone`. The stored remote configuration is not modified.
 
 ### Validation & Diagnosis (`check`)
 
