@@ -756,12 +756,6 @@ _gha_parse_repo_url() {
     local host_authority="${GH_HOST#https://}"
     local host_name="${host_authority%%:*}"
 
-    # Reject embedded user credentials in HTTP/HTTPS
-    if [[ "$url" =~ ^https?://[^/]+@ ]]; then
-        _gha_fail 2 "Remote URL contains embedded credentials: $raw_url" \
-            "Remove credentials from the remote URL. GitHub App tokens are injected automatically."
-    fi
-
     # Reject unencrypted HTTP
     if [[ "$url" =~ ^http:// ]]; then
         _gha_fail 2 "Insecure HTTP remote URL is not supported: $raw_url" \
@@ -770,6 +764,7 @@ _gha_parse_repo_url() {
 
     if [[ "$url" =~ ^https:// ]]; then
         local stripped="${url#https://}"
+        stripped="${stripped#*@}"  # Drop embedded credentials (user:token@), if any
         host_part="${stripped%%/*}"
         path_part="${stripped#"$host_part"}"
         path_part="${path_part#/}"
@@ -1115,6 +1110,60 @@ _gha_git() {
             "$@"
 }
 
+# Lists the remotes of <repo_dir> that are on GH_HOST, one per line, and warns
+# about the rest. The stored URL of a remote is used for its host check only.
+# _gha_managed_remotes <repo_dir>
+_gha_managed_remotes() {
+    local repo_dir="$1" name url host
+    local gh_host_nohash="${GH_HOST#https://}"
+    local gh_host_name="${gh_host_nohash%%:*}"
+    while IFS= read -r name; do
+        [[ -n "$name" ]] || continue
+        url="$(git -C "$repo_dir" remote get-url "$name" 2>/dev/null)" || continue
+        url="${url#*://}"
+        url="${url#*@}"          # drop any embedded credential
+        host="${url%%/*}"
+        host="${host%%:*}"
+        if [[ "$(_gha_lower "$host")" == "$(_gha_lower "$gh_host_name")" ]]; then
+            printf '%s\n' "$name"
+        else
+            _gha_log warn "Skipping remote '$name': host '$host' is not GH_HOST ($gh_host_name)"
+        fi
+    done < <(git -C "$repo_dir" remote)
+}
+
+# Pushes and fetches go to the remote by name. A remote URL that embeds a
+# credential (for example x-access-token:...@host) would be sent in place of
+# the App token, so git-app points this process at the clean, normalized URL
+# for its own run. Nothing is written to any config file.
+_gha_git_remote() {
+    local remote="$1"; shift
+    GIT_CONFIG_COUNT=2 \
+    GIT_CONFIG_KEY_0="remote.${remote}.url" \
+    GIT_CONFIG_VALUE_0="$_GHA_NORMALIZED_URL" \
+    GIT_CONFIG_KEY_1="remote.${remote}.pushurl" \
+    GIT_CONFIG_VALUE_1="$_GHA_NORMALIZED_URL" \
+        _gha_git "$@"
+}
+
+# Runs git (with the App token) and the config pairs in _GHA_CFG_ENV.
+# _gha_git_env <repo_dir> <git args...>
+_gha_git_env() {
+    local repo_dir="$1"; shift
+    local gh_host_nohash="${GH_HOST#https://}"
+    local gh_host_name="${gh_host_nohash%%:*}"
+    env "${_GHA_CFG_ENV[@]}" \
+        GH_APP_TOKEN="$_GHA_TOKEN" \
+        GH_APP_HOST="$gh_host_nohash" \
+        GIT_TERMINAL_PROMPT=0 \
+        GIT_ASKPASS="$_GHA_ASKPASS" \
+        GIT_ASKPASS_REQUIRE=force \
+        git -c credential.helper= \
+            -c "url.https://${gh_host_nohash}/.insteadOf=git@${gh_host_name}:" \
+            -c "url.https://${gh_host_nohash}/.insteadOf=ssh://git@${gh_host_name}/" \
+            -C "$repo_dir" "$@"
+}
+
 _gha_write_askpass() {
     _GHA_ASKPASS="${_GHA_TMP_DIR}/askpass.sh"
     cat > "$_GHA_ASKPASS" <<'ASKPASS_EOF'
@@ -1217,12 +1266,12 @@ git_app() {
             case "${1:-}" in
                 init)
                     cat <<'EOF'
-export GH_APP_ID="$(get_env git-app-id)"
-export GH_APP_INSTALLATION_ID="$(get_env git-app-installation-id)"
-export GH_HOST="$(get_env git-host)"
-export GIT_USER_NAME="$(get_env git-user-name)"
-export GIT_USER_EMAIL="$(get_env git-user-email)"
-export GH_APP_PRIVATE_KEY="$(get_env git-app-private-key)"
+export GH_APP_ID="$(get_secret git-app-id)"
+export GH_APP_INSTALLATION_ID="$(get_secret git-app-installation-id)"
+export GH_HOST="$(get_secret git-host)"
+export GIT_USER_NAME="$(get_secret git-user-name)"
+export GIT_USER_EMAIL="$(get_secret git-user-email)"
+export GH_APP_PRIVATE_KEY="$(get_secret git-app-private-key 2>/dev/null || get_secret git-cert 2>/dev/null)"
 EOF
                     return 0
                     ;;
@@ -1396,12 +1445,17 @@ EOF
             fi
             ;;
         ls-remote)
-            target="${1:-origin}"
+            # Split options from positionals; the first positional is a URL or remote name.
+            _gha_parse_git_args ls-remote "$@"
+            target="${_GHA_POS[0]:-origin}"
             repo_url="$(_gha_detect_repo_url "$target")"
-            if [[ -z "$repo_url" && -n "$target" ]]; then repo_url="$target"; fi
+            if [[ -z "$repo_url" && -n "${_GHA_POS[0]:-}" ]]; then repo_url="${_GHA_POS[0]}"; fi
             [[ -n "$repo_url" ]] || _gha_fail 2 "Usage: rk git-app ls-remote [repo-url | remote] [args...]"
             _gha_parse_repo_url "$repo_url"
-            _GHA_CMD=(ls-remote "$@")
+            # Pass the clean URL, never the remote name, so git does not read a stored token.
+            local -a lsrest=()
+            for ((i = 1; i < ${#_GHA_POS[@]}; i++)); do lsrest+=("${_GHA_POS[i]}"); done
+            _GHA_CMD=(ls-remote ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"} "$_GHA_NORMALIZED_URL" ${lsrest[@]+"${lsrest[@]}"})
             ;;
         check)
             [[ $# -le 1 ]] || _gha_fail 2 "Usage: rk git-app check [repo-url | remote]"
@@ -1561,18 +1615,40 @@ EOF
             ;;
         fetch)
             _gha_configure_identity "$repo_dir"
-            _gha_log info "Fetching from remote $remote"
-            _gha_git "${_GHA_CMD[@]}"
+            if [[ -n "$_GHA_NORMALIZED_URL" ]]; then
+                _gha_log info "Fetching from remote $remote"
+                _gha_git_remote "$remote" "${_GHA_CMD[@]}"
+            else
+                # fetch --all: fetch only the remotes on GH_HOST (option 3).
+                local -a managed=()
+                while IFS= read -r name; do
+                    [[ -n "$name" ]] && managed+=("$name")
+                done < <(_gha_managed_remotes "$repo_dir")
+                [[ ${#managed[@]} -gt 0 ]] ||
+                    _gha_fail 2 "No remotes on $GH_HOST to fetch from." \
+                        "Add a remote on $GH_HOST, or fetch other remotes with 'git fetch <remote>'."
+                _gha_log info "Fetching from remotes on $GH_HOST: ${managed[*]}"
+                # Pin each managed remote to its clean URL (no embedded token).
+                local -a cfg=() ; local i=0 clean
+                for name in "${managed[@]}"; do
+                    clean="$(git -C "$repo_dir" remote get-url "$name" | sed -E 's#^(https?://)[^/]*@#\1#')"
+                    cfg+=(GIT_CONFIG_KEY_$i="remote.$name.url" GIT_CONFIG_VALUE_$i="$clean"); i=$((i + 1))
+                    cfg+=(GIT_CONFIG_KEY_$i="remote.$name.pushurl" GIT_CONFIG_VALUE_$i="$clean"); i=$((i + 1))
+                done
+                _GHA_CFG_ENV=("GIT_CONFIG_COUNT=$i" "${cfg[@]}")
+                # Fetch the managed remotes by name, not --all, so skipped remotes are never contacted.
+                _gha_git_env "$repo_dir" fetch ${_GHA_OPTS[@]+"${_GHA_OPTS[@]}"} "${managed[@]}"
+            fi
             ;;
         pull)
             _gha_configure_identity "$repo_dir"
             _gha_log info "Pulling from remote $remote"
-            _gha_git "${_GHA_CMD[@]}"
+            _gha_git_remote "$remote" "${_GHA_CMD[@]}"
             ;;
         push)
             _gha_configure_identity "$repo_dir"
             _gha_log info "Pushing to remote $remote"
-            _gha_git "${_GHA_CMD[@]}"
+            _gha_git_remote "$remote" "${_GHA_CMD[@]}"
             ;;
         ls-remote)
             _gha_log info "Listing remote references for $repo_url"
